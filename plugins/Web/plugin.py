@@ -84,6 +84,9 @@ class Web(callbacks.PluginRegexp):
             return
         if callbacks.addressed(irc.nick, msg):
             return
+        ign = self.registryValue('ignoredNicks', channel)
+        if msg.nick in ign: 
+            return
         if self.registryValue('titleSnarfer', channel):
             url = match.group(0)
             r = self.registryValue('nonSnarfingRegexp', channel)

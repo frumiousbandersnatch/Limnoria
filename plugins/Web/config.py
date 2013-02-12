@@ -53,6 +53,9 @@ conf.registerChannelValue(Web, 'nonSnarfingRegexp',
     registry.Regexp(None, _("""Determines what URLs matching the given regexp
     will not be snarfed.  Give the empty string if you have no URLs that you'd
     like to exclude from being snarfed.""")))
+conf.registerChannelValue(Web, 'ignoredNicks',
+    registry.SpaceSeparatedListOfStrings([],"""Nicks to ignore when snarfing
+    URLs"""))
 
 conf.registerGroup(Web, 'fetch')
 conf.registerGlobalValue(Web.fetch, 'maximum',
