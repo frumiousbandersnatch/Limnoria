@@ -43,7 +43,7 @@ _ = PluginInternationalization('Games')
 
 class Games(callbacks.Plugin):
     @internationalizeDocstring
-    def coin(self, irc, msg, args):
+    def flip(self, irc, msg, args):
         """takes no arguments
 
         Flips a coin and returns the result.
@@ -52,7 +52,7 @@ class Games(callbacks.Plugin):
             irc.reply(_('heads'))
         else:
             irc.reply(_('tails'))
-    coin = wrap(coin)
+    flip = wrap(flip)
 
     @internationalizeDocstring
     def dice(self, irc, msg, args, m):
