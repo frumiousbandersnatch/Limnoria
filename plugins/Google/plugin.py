@@ -47,6 +47,10 @@ _ = PluginInternationalization('Google')
 
 import json
 
+import supybot.utils.shrinkurl as shrinkurl
+reload(shrinkurl)
+
+
 class Google(callbacks.PluginRegexp):
     threaded = True
     callBefore = ['Web']
@@ -134,6 +138,11 @@ class Google(callbacks.PluginRegexp):
             url = result['unescapedUrl']
             if sys.version_info[0] < 3:
                 url = url.encode('utf-8')
+
+            surl = shrinkurl.shrink(url)
+            self.log.debug('SHRINK %s --> %s' % (url, surl))
+            url = surl
+
             if title:
                 if bold:
                     title = ircutils.bold(title)
@@ -158,6 +167,11 @@ class Google(callbacks.PluginRegexp):
         data = self.search(text, msg.args[0], {'smallsearch': True})
         if data['responseData']['results']:
             url = data['responseData']['results'][0]['unescapedUrl']
+
+            surl = shrinkurl.shrink(url)
+            self.log.debug('SHRINK %s --> %s' % (url, surl))
+            url = surl
+
             if opts.has_key('snippet'):
                 snippet = data['responseData']['results'][0]['content']
                 snippet = " | " + utils.web.htmlToText(snippet, tagReplace='')
@@ -197,6 +211,16 @@ class Google(callbacks.PluginRegexp):
                                     'filter':''}),
                            'text'])
 
+    def shrink(self, irc, msg, args, url):
+        '''<url>
+
+        Shrink a URL.'''
+        surl = shrinkurl.shrink(url)
+        self.log.debug('SHRINK %s --> %s' % (url, surl))
+        irc.reply(surl)
+        return
+    shrink = wrap(shrink, ['url'])
+
     @internationalizeDocstring
     def cache(self, irc, msg, args, url):
         """<url>
@@ -208,6 +232,11 @@ class Google(callbacks.PluginRegexp):
             m = data['responseData']['results'][0]
             if m['cacheUrl']:
                 url = m['cacheUrl'].encode('utf-8')
+
+                surl = shrinkurl.shrink(url)
+                self.log.debug('SHRINK %s --> %s' % (url, surl))
+                url = surl
+
                 irc.reply(url)
                 return
         irc.error(_('Google seems to have no cache for that site.'))

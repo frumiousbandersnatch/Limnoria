@@ -107,5 +107,6 @@ import crypt
 import error
 import python
 import transaction
+import shrinkurl
 
 # vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:
