@@ -42,18 +42,12 @@ from iter import all, any
 from structures import TwoWayDictionary
 
 from supybot.i18n import PluginInternationalization
-internationalizeFunction=PluginInternationalization().internationalizeFunction
+_ = PluginInternationalization()
+internationalizeFunction = _.internationalizeFunction
 
 def rsplit(s, sep=None, maxsplit=-1):
     """Equivalent to str.split, except splitting from the right."""
-    if sys.version_info < (2, 4, 0):
-        if sep is not None:
-            sep = sep[::-1]
-        L = s[::-1].split(sep, maxsplit)
-        L.reverse()
-        return [s[::-1] for s in L]
-    else:
-        return s.rsplit(sep, maxsplit)
+    return s.rsplit(sep, maxsplit)
 
 def normalizeWhitespace(s, removeNewline=True):
     """Normalizes the whitespace in a string; \s+ becomes one space."""
@@ -246,11 +240,13 @@ def perlVariableSubstitute(vars, text):
                 return '$' + unbraced
     return _perlVarSubstituteRe.sub(replacer, text)
 
-def commaAndify(seq, comma=',', And='and'):
+def commaAndify(seq, comma=',', And=None):
     """Given a a sequence, returns an English clause for that sequence.
 
     I.e., given [1, 2, 3], returns '1, 2, and 3'
     """
+    if And is None:
+        And = _('and')
     L = list(seq)
     if len(L) == 0:
         return ''
@@ -447,7 +443,13 @@ def format(s, *args, **kwargs):
     def sub(match):
         char = match.group(1)
         if char == 's':
-            return str(args.pop())
+            token = args.pop()
+            if isinstance(token, str):
+                return token
+            elif sys.version_info[0] < 3 and isinstance(token, unicode):
+                return token.encode('utf8')
+            else:
+                return str(token)
         elif char == 'i':
             # XXX Improve me!
             return str(args.pop())
@@ -459,7 +461,8 @@ def format(s, *args, **kwargs):
             return has(args.pop())
         elif char == 'L':
             t = args.pop()
-            if isinstance(t, list):
+            if isinstance(t, list) or (sys.version_info[0] >= 3 and
+                    (isinstance(t, map) or isinstance(t, filter))):
                 return commaAndify(t)
             elif isinstance(t, tuple) and len(t) == 2:
                 if not isinstance(t[0], list):

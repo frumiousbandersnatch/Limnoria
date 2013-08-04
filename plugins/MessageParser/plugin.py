@@ -58,10 +58,7 @@ except:
                            #'plugin.  Download it at ' \
                            #'<http://code.google.com/p/pysqlite/>'
 
-try:
-    import sqlite3
-except ImportError:
-    from pysqlite2 import dbapi2 as sqlite3 # for python2.4
+import sqlite3
 
 # these are needed cuz we are overriding getdb
 import threading
@@ -149,16 +146,14 @@ class MessageParser(callbacks.Plugin, plugins.ChannelDBHandler):
         else:
             return True
 
-    def doPrivmsg(self, irc, msg):
+    def do_privmsg_notice(self, irc, msg):
         channel = msg.args[0]
         if not irc.isChannel(channel):
             return
         if self.registryValue('enable', channel):
-            if callbacks.addressed(irc.nick, msg): #message is direct command
-                return
             actions = []
             results = []
-            for channel in (channel, 'global'):
+            for channel in set(map(plugins.getChannel, (channel, 'global'))):
                 db = self.getDb(channel)
                 cursor = db.cursor()
                 cursor.execute("SELECT regexp, action FROM triggers")
@@ -167,6 +162,7 @@ class MessageParser(callbacks.Plugin, plugins.ChannelDBHandler):
                 results.extend(map(lambda x: (channel,)+x, cursor.fetchall()))
             if len(results) == 0:
                 return
+            max_triggers = self.registryValue('maxTriggers', channel)
             for (channel, regexp, action) in results:
                 for match in re.finditer(regexp, msg.args[1]):
                     if match is not None:
@@ -175,9 +171,22 @@ class MessageParser(callbacks.Plugin, plugins.ChannelDBHandler):
                         for (i, j) in enumerate(match.groups()):
                             thisaction = re.sub(r'\$' + str(i+1), match.group(i+1), thisaction)
                         actions.append(thisaction)
+                        if max_triggers != 0 and max_triggers == len(actions):
+                            break
+                if max_triggers != 0 and max_triggers == len(actions):
+                    break
+
 
             for action in actions:
                 self._runCommandFunction(irc, msg, action)
+
+    def doPrivmsg(self, irc, msg):
+        if not callbacks.addressed(irc.nick, msg): #message is not direct command
+            self.do_privmsg_notice(irc, msg)
+
+    def doNotice(self, irc, msg):
+        if self.registryValue('enableForNotices', msg.args[0]):
+            self.do_privmsg_notice(irc, msg)
 
     @internationalizeDocstring
     def add(self, irc, msg, args, channel, regexp, action):
@@ -381,7 +390,7 @@ class MessageParser(callbacks.Plugin, plugins.ChannelDBHandler):
         """
         db = self.getDb(channel)
         cursor = db.cursor()
-        cursor.execute("SELECT regexp, id FROM triggers")
+        cursor.execute("SELECT regexp, id FROM triggers ORDER BY id")
         results = cursor.fetchall()
         if len(results) != 0:
             regexps = results

@@ -1,14 +1,15 @@
 language: python
 python:
+  - "2.6"
   - "2.7"
   - "3.2"
-  - "2.6"
+  - "3.3"
   - "pypy"
 # command to install dependencies, e.g. pip install -r requirements.txt --use-mirrors
 install:
-  - pip install pytz
+  - pip install pytz feedparser charade sqlalchemy --use-mirrors
 # command to run tests, e.g. python setup.py test
 script:
   - echo $TRAVIS_PYTHON_VERSION
   - python setup.py install
-  - cd py3k/; supybot-test test --plugins-dir=plugins/ --exclude=plugins/PluginDownloader --exclude=plugins/ShrinkUrl
+  - supybot-test test --plugins-dir=./build/lib*/supybot/plugins/ --no-network --disable-multiprocessing --exclude=./build/lib*/supybot/plugins/Scheduler --exclude=./build/lib*/supybot/plugins/Filter

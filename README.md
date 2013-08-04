@@ -1,6 +1,12 @@
+[Install guide](http://supybot.fr.cr/doc/use/install.html)
+
+# Build status
+
 Master branch: [![Build Status (master branch)](https://travis-ci.org/ProgVal/Limnoria.png?branch=master)](https://travis-ci.org/ProgVal/Limnoria)
 
 Testing branch: [![Build Status (testing branch)](https://travis-ci.org/ProgVal/Limnoria.png?branch=testing)](https://travis-ci.org/ProgVal/Limnoria)
+
+Limnoria is tested with Python 2.6, 2.7, 3.2, 3.3, and Pypy. Python 2.5 and older versions are not supported.
 
 # EVERYONE:
 

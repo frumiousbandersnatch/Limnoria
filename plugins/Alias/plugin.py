@@ -29,6 +29,7 @@
 ###
 
 import re
+import sys
 import types
 
 import supybot.conf as conf
@@ -215,8 +216,14 @@ def makeNewAlias(name, alias):
     flexargs = ''
     if biggestDollar and (wildcard or biggestAt):
         flexargs = _(' at least')
-    doc =format(_('<an alias,%s %n>\n\nAlias for %q.'),
-                flexargs, (biggestDollar, _('argument')), alias)
+    try:
+        doc = format(_('<an alias,%s %n>\n\nAlias for %q.'),
+                    flexargs, (biggestDollar, _('argument')), alias)
+    except UnicodeDecodeError:
+        if sys.version_info[0] == 2:
+            alias = alias.decode('utf8')
+        doc = format(_('<an alias,%s %n>\n\nAlias for %q.'),
+                    flexargs, (biggestDollar, _('argument')), alias)
     f = utils.python.changeFunctionName(f, name, doc)
     return f
 
@@ -352,7 +359,11 @@ class Alias(callbacks.Plugin):
         if name in self.aliases and self.isCommandMethod(name):
             if evenIfLocked or not self.aliases[name][1]:
                 del self.aliases[name]
-                conf.supybot.plugins.Alias.aliases.unregister(name)
+                if '.' in name or '|' in name:
+                    conf.supybot.plugins.Alias.escapedaliases.unregister(
+                            escapeAlias(name))
+                else:
+                    conf.supybot.plugins.Alias.aliases.unregister(name)
             else:
                 raise AliasError, 'That alias is locked.'
         else:

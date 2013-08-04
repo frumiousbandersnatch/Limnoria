@@ -42,7 +42,11 @@ import sys
 import atexit
 import shutil
 import signal
-import cStringIO as StringIO
+if sys.version_info[0] < 3:
+    import cStringIO as StringIO
+    StringIO = StringIO.StringIO
+else:
+    from io import StringIO
 
 if sys.version_info < (2, 6, 0):
     sys.stderr.write('This program requires Python >= 2.6.0')
@@ -50,7 +54,7 @@ if sys.version_info < (2, 6, 0):
     sys.exit(-1)
 
 def _termHandler(signalNumber, stackFrame):
-    raise SystemExit, 'Signal #%s.' % signalNumber
+    raise SystemExit('Signal #%s.' % signalNumber)
 
 signal.signal(signal.SIGTERM, _termHandler)
 
@@ -102,7 +106,7 @@ def main():
                               'Ctrl-C at console.'
                     irc.queueMsg(ircmsgs.quit(quitmsg))
                     irc.die()
-        except SystemExit, e:
+        except SystemExit as e:
             s = str(e)
             if s:
                 log.info('Exiting due to %s', s)
@@ -110,17 +114,17 @@ def main():
         except:
             try: # Ok, now we're *REALLY* paranoid!
                 log.exception('Exception raised out of drivers.run:')
-            except Exception, e:
-                print 'Exception raised in log.exception.  This is *really*'
-                print 'bad.  Hopefully it won\'t happen again, but tell us'
-                print 'about it anyway, this is a significant problem.'
-                print 'Anyway, here\'s the exception: %s' % \
-                      utils.gen.exnToString(e)
+            except Exception as e:
+                print('Exception raised in log.exception.  This is *really*')
+                print('bad.  Hopefully it won\'t happen again, but tell us')
+                print('about it anyway, this is a significant problem.')
+                print('Anyway, here\'s the exception: %s' % \
+                      utils.gen.exnToString(e))
             except:
-                print 'Man, this really sucks.  Not only did log.exception'
-                print 'raise an exception, but freaking-a, it was a string'
-                print 'exception.  People who raise string exceptions should'
-                print 'die a slow, painful death.'
+                print('Oh, this really sucks.  Not only did log.exception')
+                print('raise an exception, but freaking-a, it was a string')
+                print('exception.  People who raise string exceptions should')
+                print('die a slow, painful death.')
     httpserver.stopServer()
     now = time.time()
     seconds = now - world.startedAt
@@ -168,7 +172,7 @@ if __name__ == '__main__':
 
     if os.name == 'posix':
         if (os.getuid() == 0 or os.geteuid() == 0) and not options.allowRoot:
-            sys.stderr.write('Dude, don\'t even try to run this as root.')
+            sys.stderr.write('Don\'t even try to run this as root.')
             sys.stderr.write(os.linesep)
             sys.exit(-1)
 
@@ -181,12 +185,12 @@ if __name__ == '__main__':
         docs/GETTING_STARTED and follow the instructions."""))
     else:
         registryFilename = args.pop()
-        i18n.getLocaleFromRegistryFilename(registryFilename)
         try:
             # The registry *MUST* be opened before importing log or conf.
+            i18n.getLocaleFromRegistryFilename(registryFilename)
             registry.open_registry(registryFilename)
             shutil.copy(registryFilename, registryFilename + '.bak')
-        except registry.InvalidRegistryFile, e:
+        except registry.InvalidRegistryFile as e:
             s = '%s in %s.  Please fix this error and start supybot again.' % \
                 (e, registryFilename)
             s = textwrap.fill(s)
@@ -194,14 +198,14 @@ if __name__ == '__main__':
             sys.stderr.write(os.linesep)
             raise
             sys.exit(-1)
-        except EnvironmentError, e:
+        except EnvironmentError as e:
             sys.stderr.write(str(e))
             sys.stderr.write(os.linesep)
             sys.exit(-1)
 
     try:
         import supybot.log as log
-    except supybot.registry.InvalidRegistryValue, e:
+    except supybot.registry.InvalidRegistryValue as e:
         # This is raised here because supybot.log imports supybot.conf.
         name = e.value._name
         errmsg = textwrap.fill('%s: %s' % (name, e),
@@ -245,7 +249,7 @@ if __name__ == '__main__':
             child = os.fork()
             if child != 0:
                 if options.debug:
-                    print 'Parent exiting, child PID: %s' % child
+                    print('Parent exiting, child PID: %s' % child)
                 # We must us os._exit instead of sys.exit so atexit handlers
                 # don't run.  They shouldn't be dangerous, but they're ugly.
                 os._exit(0)
@@ -270,8 +274,8 @@ if __name__ == '__main__':
         # level WARNING on upkeep.
         sys.stdout.close()
         sys.stderr.close()
-        sys.stdout = StringIO.StringIO()
-        sys.stderr = StringIO.StringIO()
+        sys.stdout = StringIO()
+        sys.stderr = StringIO()
         # We have to be really methodical here.
         os.close(0)
         os.close(1)
@@ -297,14 +301,15 @@ if __name__ == '__main__':
             def removePidFile():
                 try:
                     os.remove(pidFile)
-                except EnvironmentError, e:
+                except EnvironmentError as e:
                     log.error('Could not remove pid file: %s', e)
             atexit.register(removePidFile)
-        except EnvironmentError, e:
+        except EnvironmentError as e:
             log.critical('Error opening/writing pid file %s: %s', pidFile, e)
             sys.exit(-1)
 
     conf.allowDefaultOwner = options.allowDefaultOwner
+    conf.disableMultiprocessing = False
 
     if not os.path.exists(conf.supybot.directories.log()):
         os.mkdir(conf.supybot.directories.log())

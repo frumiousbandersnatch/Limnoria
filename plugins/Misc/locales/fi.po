@@ -229,12 +229,14 @@ msgid "Sorry, I can't find any mores for %s"
 msgstr "Anteeksi, en voi löytää jatkoa %s:lle."
 
 #: plugin.py:353
-msgid "more message"
+#, fuzzy
+msgid "1 more message"
 msgstr "viesti lisää"
 
 #: plugin.py:355
-msgid "more messages"
-msgstr "lisää viestejä"
+#, fuzzy
+msgid "%i more messages"
+msgstr "%i lisää viestejä"
 
 #: plugin.py:359
 msgid "You haven't asked me a command; perhaps you want to see someone else's more.  To do so, call this command with that person's nick."
@@ -291,7 +293,7 @@ msgstr ""
 "        "
 
 #: plugin.py:513
-msgid "Dude, just give the command.  No need for the tell."
+msgid "Hey, just give the command.  No need for the tell."
 msgstr "Keikari, anna vain komento.  Ei tarvitse kertoa."
 
 #: plugin.py:518

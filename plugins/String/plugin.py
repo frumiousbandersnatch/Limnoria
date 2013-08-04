@@ -228,7 +228,7 @@ class String(callbacks.Plugin):
         http://www.rsasecurity.com/rsalabs/faq/3-6-6.html for more information
         about md5.
         """
-        irc.reply(utils.crypt.md5(text).hexdigest())
+        irc.reply(utils.crypt.md5(text.encode('utf8')).hexdigest())
     md5 = wrap(md5, ['text'])
 
     @internationalizeDocstring
@@ -239,7 +239,7 @@ class String(callbacks.Plugin):
         http://www.secure-hash-algorithm-md5-sha-1.co.uk/ for more information
         about SHA.
         """
-        irc.reply(utils.crypt.sha(text).hexdigest())
+        irc.reply(utils.crypt.sha(text.encode('utf8')).hexdigest())
     sha = wrap(sha, ['text'])
 
 Class = String

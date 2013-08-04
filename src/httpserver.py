@@ -32,6 +32,7 @@ An embedded and centralized HTTP server for Supybot's plugins.
 """
 
 import os
+import sys
 import cgi
 import socket
 from threading import Event, Thread
@@ -51,6 +52,115 @@ configGroup = conf.supybot.servers.http
 
 class RequestNotHandled(Exception):
     pass
+
+DEFAULT_TEMPLATES = {
+    'index.html': """\
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+ <head>
+  <title>""" + _('Supybot Web server index') + """</title>
+  <link rel="stylesheet" type="text/css" href="/default.css" media="screen" />
+ </head>
+ <body class="purelisting">
+  <h1>Supybot web server index</h1>
+  <p>""" + _('Here is a list of the plugins that have a Web interface:') +\
+  """
+  </p>
+  %(list)s
+ </body>
+</html>""",
+    'generic/error.html': """\
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+ <head>
+  <title>%(title)s</title>
+  <link rel="stylesheet" href="/default.css" />
+ </head>
+ <body class="error">
+  <h1>Error</h1>
+  <p>%(error)s</p>
+ </body>
+</html>""",
+    'default.css': """\
+body {
+    background-color: #F0F0F0;
+}
+
+/************************************
+ * Classes that plugins should use. *
+ ************************************/
+
+/* Error pages */
+body.error {
+    text-align: center;
+}
+body.error p {
+    background-color: #FFE0E0;
+    border: 1px #FFA0A0 solid;
+}
+
+/* Pages that only contain a list. */
+.purelisting {
+    text-align: center;
+}
+.purelisting ul {
+    margin: 0;
+    padding: 0;
+}
+.purelisting ul li {
+    margin: 0;
+    padding: 0;
+    list-style-type: none;
+}
+
+/* Pages that only contain a table. */
+.puretable {
+    text-align: center;
+}
+.puretable table
+{
+    width: 100%;
+    border-collapse: collapse;
+    text-align: center;
+}
+
+.puretable table th
+{
+    /*color: #039;*/
+    padding: 10px 8px;
+    border-bottom: 2px solid #6678b1;
+}
+
+.puretable table td
+{
+    padding: 9px 8px 0px 8px;
+    border-bottom: 1px solid #ccc;
+}
+
+""",
+    'robots.txt': """""",
+    }
+
+def set_default_templates(defaults):
+    for filename, content in defaults.items():
+        path = conf.supybot.directories.data.web.dirize(filename)
+        if os.path.isfile(path + '.example'):
+            os.unlink(path + '.example')
+        if not os.path.isdir(os.path.dirname(path)):
+            os.makedirs(os.path.dirname(path))
+        with open(path + '.example', 'a') as fd:
+            fd.write(content)
+set_default_templates(DEFAULT_TEMPLATES)
+
+def get_template(filename):
+    path = conf.supybot.directories.data.web.dirize(filename)
+    if os.path.isfile(path):
+        return open(path, 'r').read()
+    else:
+        assert os.path.isfile(path + '.example'), path + '.example'
+        return open(path + '.example', 'r').read()
 
 class RealSupyHTTPServer(HTTPServer):
     # TODO: make this configurable
@@ -99,8 +209,10 @@ class SupyHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_X(self, callbackMethod, *args, **kwargs):
         if self.path == '/':
             callback = SupyIndex()
-        elif self.path == '/robots.txt':
-            callback = RobotsTxt()
+        elif self.path in ('/robots.txt',):
+            callback = Static('text/plain; charset=utf-8')
+        elif self.path in ('/default.css',):
+            callback = Static('text/css')
         elif self.path == '/favicon.ico':
             callback = Favicon()
         else:
@@ -115,8 +227,10 @@ class SupyHTTPRequestHandler(BaseHTTPRequestHandler):
                 'wfile', 'headers'):
             setattr(callback, name, getattr(self, name))
         # We call doX, because this is more supybotic than do_X.
-        getattr(callback, callbackMethod)(self,
-                '/' + '/'.join(self.path.split('/')[2:]),
+        path = self.path
+        if not callback.fullpath:
+            path = '/' + path.split('/', 2)[-1]
+        getattr(callback, callbackMethod)(self, path,
                 *args, **kwargs)
 
     def do_GET(self):
@@ -141,9 +255,19 @@ class SupyHTTPRequestHandler(BaseHTTPRequestHandler):
         log.info('HTTP request: %s - %s' %
                 (self.address_string(), format % args))
 
-class SupyHTTPServerCallback:
+class SupyHTTPServerCallback(object):
     """This is a base class that should be overriden by any plugin that want
     to have a Web interface."""
+    __metaclass__ = log.MetaFirewall
+    __firewalled__ = {'doGet': None,
+                      'doPost': None,
+                      'doHead': None,
+                      'doPut': None,
+                      'doDelete': None,
+                     }
+
+
+    fullpath = False
     name = "Unnamed plugin"
     defaultResponse = _("""
     This is a default response of the Supybot HTTP server. If you see this
@@ -152,10 +276,10 @@ class SupyHTTPServerCallback:
 
     def doGet(self, handler, path, *args, **kwargs):
         handler.send_response(400)
-        self.send_header('Content_type', 'text/plain; charset=utf-8')
+        self.send_header('Content-Type', 'text/plain; charset=utf-8; charset=utf-8')
         self.send_header('Content-Length', len(self.defaultResponse))
         self.end_headers()
-        self.wfile.write(self.defaultResponse)
+        self.wfile.write(self.defaultResponse.encode())
 
     doPost = doHead = doGet
 
@@ -166,6 +290,7 @@ class SupyHTTPServerCallback:
 class Supy404(SupyHTTPServerCallback):
     """A 404 Not Found error."""
     name = "Error 404"
+    fullpath = True
     response = _("""
     I am a pretty clever IRC bot, but I suck at serving Web pages, particulary
     if I don't know what to serve.
@@ -173,53 +298,53 @@ class Supy404(SupyHTTPServerCallback):
     trained to help you in such a case.""")
     def doGet(self, handler, path, *args, **kwargs):
         handler.send_response(404)
-        self.send_header('Content_type', 'text/plain; charset=utf-8')
+        self.send_header('Content-Type', 'text/plain; charset=utf-8; charset=utf-8')
         self.send_header('Content-Length', len(self.response))
         self.end_headers()
-        self.wfile.write(self.response)
+        response = self.response
+        if sys.version_info[0] >= 3:
+            response = response.encode()
+        self.wfile.write(response)
 
     doPost = doHead = doGet
 
 class SupyIndex(SupyHTTPServerCallback):
     """Displays the index of available plugins."""
     name = "index"
+    fullpath = True
     defaultResponse = _("Request not handled.")
-    template = """
-    <html>
-     <head>
-      <title>""" + _('Supybot Web server index') + """</title>
-     </head>
-     <body>
-      <p>""" + _('Here is a list of the plugins that have a Web interface:') +\
-      """
-      </p>
-      %s
-     </body>
-    </html>"""
     def doGet(self, handler, path):
         plugins = [x for x in handler.server.callbacks.items()]
         if plugins == []:
             plugins = _('No plugins available.')
         else:
-            plugins = '<ul><li>%s</li></ul>' % '</li><li>'.join(
+            plugins = '<ul class="plugins"><li>%s</li></ul>' % '</li><li>'.join(
                     ['<a href="/%s/">%s</a>' % (x,y.name) for x,y in plugins])
-        response = self.template % plugins
+        response = get_template('index.html') % {'list': plugins}
         handler.send_response(200)
-        self.send_header('Content_type', 'text/html')
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.send_header('Content-Length', len(response))
         self.end_headers()
+        if sys.version_info[0] >= 3:
+            response = response.encode()
         self.wfile.write(response)
 
-class RobotsTxt(SupyHTTPServerCallback):
-    """Serves the robot.txt file to robots."""
-    name = 'robotstxt'
+class Static(SupyHTTPServerCallback):
+    """Serves static files."""
+    fullpath = True
+    name = 'static'
     defaultResponse = _('Request not handled')
+    def __init__(self, mimetype='text/plain; charset=utf-8'):
+        super(Static, self).__init__()
+        self._mimetype = mimetype
     def doGet(self, handler, path):
-        response = conf.supybot.servers.http.robots().replace('\\n', '\n')
+        response = get_template(path)
         handler.send_response(200)
-        self.send_header('Content-type', 'text/plain')
+        self.send_header('Content-type', self._mimetype)
         self.send_header('Content-Length', len(response))
         self.end_headers()
+        if sys.version_info[0] >= 3:
+            response = response.encode()
         self.wfile.write(response)
 
 class Favicon(SupyHTTPServerCallback):
@@ -250,12 +375,14 @@ class Favicon(SupyHTTPServerCallback):
         else:
             response = _('No favicon set.')
             handler.send_response(404)
-            self.send_header('Content-type', 'text/plain')
+            self.send_header('Content-type', 'text/plain; charset=utf-8')
             self.send_header('Content-Length', len(response))
             self.end_headers()
+            if sys.version_info[0] >= 3:
+                response = response.encode()
             self.wfile.write(response)
 
-http_servers = None
+http_servers = []
 
 def startServer():
     """Starts the HTTP server. Shouldn't be called from other modules.
@@ -276,18 +403,17 @@ def stopServer():
     """Stops the HTTP server. Should be run only from this module or from
     when the bot is dying (ie. from supybot.world)"""
     global http_servers
-    if http_servers is not None:
-        for server in http_servers:
-            log.info('Stopping HTTP server: %s' % str(server))
-            server.shutdown()
-            server = None
+    for server in http_servers:
+        log.info('Stopping HTTP server: %s' % str(server))
+        server.shutdown()
+        server = None
 
 if configGroup.keepAlive():
     startServer()
 
 def hook(subdir, callback):
     """Sets a callback for a given subdir."""
-    if http_servers is None:
+    if not http_servers:
         startServer()
     assert isinstance(http_servers, list)
     for server in http_servers:

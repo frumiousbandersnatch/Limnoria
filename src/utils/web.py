@@ -117,8 +117,13 @@ def getUrlFd(url, headers=None, data=None):
                 url = scheme + '://' + url
             request = urllib2.Request(url, headers=headers, data=data)
             if 'auth' in locals():
+                if sys.version_info[0] >= 3 and isinstance(auth, str):
+                    auth = auth.encode()
+                auth = base64.b64encode(auth)
+                if sys.version_info[0] >= 3:
+                    auth = auth.decode()
                 request.add_header('Authorization',
-                        'Basic ' + base64.b64encode(auth))
+                        'Basic ' + auth)
         else:
             request = url
             request.add_data(data)
@@ -161,6 +166,27 @@ def getUrl(url, size=None, headers=None, data=None):
 def getDomain(url):
     return urlparse.urlparse(url)[1]
 
+_charset_re = ('<meta[^a-z<>]+charset='
+    """(?P<charset>("[^"]+"|'[^']+'))""")
+def getEncoding(s):
+    try:
+        match = re.search(_charset_re, s, re.MULTILINE)
+        if match:
+            return match.group('charset')[1:-1]
+    except:
+        match = re.search(_charset_re.encode(), s, re.MULTILINE)
+        if match:
+            return match.group('charset').decode()[1:-1]
+
+    try:
+        import charade.universaldetector
+        u = charade.universaldetector.UniversalDetector()
+        u.feed(s)
+        u.close()
+        return u.result['encoding']
+    except:
+        return None
+
 class HtmlToText(HTMLParser, object):
     """Taken from some eff-bot code on c.l.p."""
     entitydefs = htmlentitydefs.entitydefs.copy()
@@ -180,7 +206,7 @@ class HtmlToText(HTMLParser, object):
         self.data.append(data)
 
     def handle_entityref(self, data):
-        self.data.append(chr(htmlentitydefs.name2codepoint[data]))
+        self.data.append(unichr(htmlentitydefs.name2codepoint[data]))
 
     def getText(self):
         text = ''.join(self.data).strip()
@@ -189,8 +215,15 @@ class HtmlToText(HTMLParser, object):
 def htmlToText(s, tagReplace=' '):
     """Turns HTML into text.  tagReplace is a string to replace HTML tags with.
     """
-    if sys.version_info[0] >= 3 and isinstance(s, bytes):
-        s = s.decode()
+    encoding = getEncoding(s)
+    if encoding:
+        s = s.decode(encoding)
+    else:
+        try:
+            if sys.version_info[0] < 3 or isinstance(s, bytes):
+                s = s.decode('utf8')
+        except:
+            pass
     x = HtmlToText(tagReplace)
     x.feed(s)
     return x.getText()
@@ -200,5 +233,7 @@ def mungeEmail(s):
     s = s.replace('.', ' DOT ')
     return s
 
+
 # vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:
+
 

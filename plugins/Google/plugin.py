@@ -149,12 +149,15 @@ class Google(callbacks.PluginRegexp):
                 results.append(format('%s: %u', title, url))
             else:
                 results.append(url)
+        if sys.version_info[0] < 3:
+            repl = lambda x:x if isinstance(x, unicode) else unicode(x, 'utf8')
+            results = map(repl, results)
         if not results:
-            return [format(_('No matches found.'))]
+            return [_('No matches found.')]
         elif onetoone:
             return results
         else:
-            return [format('; '.join(results))]
+            return [u'; '.join(results)]
 
     @internationalizeDocstring
     def lucky(self, irc, msg, args, opts, text):
@@ -310,19 +313,19 @@ class Google(callbacks.PluginRegexp):
         data = self.search(searchString, msg.args[0], {'smallsearch': True})
         if data['responseData']['results']:
             url = data['responseData']['results'][0]['unescapedUrl']
-            irc.reply(url.encode('utf-8'), prefixNick=False)
+            irc.reply(url, prefixNick=False)
     googleSnarfer = urlSnarfer(googleSnarfer)
 
-    def _googleUrl(self, s):
-        s = s.replace('+', '%2B')
-        s = s.replace(' ', '+')
-        url = r'http://google.com/search?q=' + s
+    def _googleUrl(self, s, channel):
+        s = urllib.quote_plus(s)
+        url = r'http://%s/search?q=%s' % \
+                (self.registryValue('baseUrl', channel), s)
         return url
 
-    def _googleUrlIG(self, s):
-        s = s.replace('+', '%2B')
-        s = s.replace(' ', '+')
-        url = r'http://www.google.com/ig/calculator?hl=en&q=' + s
+    def _googleUrlIG(self, s, channel):
+        s = urllib.quote_plus(s)
+        url = r'http://%s/ig/calculator?hl=en&q=%s' % \
+                (self.registryValue('baseUrl', channel), s)
         return url
 
     _calcRe1 = re.compile(r'<table.*class="?obcontainer"?[^>]*>(.*?)</table>', re.I)
@@ -336,7 +339,10 @@ class Google(callbacks.PluginRegexp):
 
         Uses Google's calculator to calculate the value of <expression>.
         """
-        urlig = self._googleUrlIG(expr)
+        channel = msg.args[0]
+        if not ircutils.isChannel(channel):
+            channel = None
+        urlig = self._googleUrlIG(expr, channel)
         js = utils.web.getUrl(urlig).decode('utf8')
         # Convert JavaScript to JSON. Ouch.
         js = js \
@@ -347,7 +353,7 @@ class Google(callbacks.PluginRegexp):
                 .replace('\\', '\\\\')
         js = json.loads(js)
 
-        url = self._googleUrl(expr)
+        url = self._googleUrl(expr, channel)
         html = utils.web.getUrl(url).decode('utf8')
         match = self._calcRe1.search(html)
         if match is None:
@@ -376,7 +382,10 @@ class Google(callbacks.PluginRegexp):
 
         Looks <phone number> up on Google.
         """
-        url = self._googleUrl(phonenumber)
+        channel = msg.args[0]
+        if not ircutils.isChannel(channel):
+            channel = None
+        url = self._googleUrl(phonenumber, channel)
         html = utils.web.getUrl(url).decode('utf8')
         m = self._phoneRe.search(html)
         if m is not None:

@@ -35,10 +35,7 @@ import time
 import socket
 import linecache
 
-if sys.version_info >= (2, 5, 0):
-    import re as sre
-else:
-    import sre
+import re
 
 import supybot.log as log
 import supybot.conf as conf
@@ -112,7 +109,8 @@ class Owner(callbacks.Plugin):
         self.__parent = super(Owner, self)
         self.__parent.__init__(irc)
         # Setup command flood detection.
-        self.commands = ircutils.FloodQueue(60)
+        self.commands = ircutils.FloodQueue(conf.supybot.abuse.flood.interval())
+        conf.supybot.abuse.flood.interval.addCallback(self.setFloodQueueTimeout)
         # Setup plugins and default plugins for commands.
         #
         # This needs to be done before we connect to any networks so that the
@@ -232,11 +230,13 @@ class Owner(callbacks.Plugin):
         world.starting = False
 
     def do376(self, irc, msg):
-        networkGroup = conf.supybot.networks.get(irc.network)
-        for channel in networkGroup.channels():
-            irc.queueMsg(networkGroup.channels.join(channel))
+        msg = conf.supybot.networks.get(irc.network).channels.joins()
+        if msg:
+            irc.queueMsg(msg)
     do422 = do377 = do376
 
+    def setFloodQueueTimeout(self, *args, **kwargs):
+        self.commands.timeout = conf.supybot.abuse.flood.interval()
     def doPrivmsg(self, irc, msg):
         assert self is irc.callbacks[0], \
                'Owner isn\'t first callback: %r' % irc.callbacks
@@ -259,8 +259,9 @@ class Owner(callbacks.Plugin):
                               'command flood.', banmask, punishment)
                 ircdb.ignores.add(banmask, time.time() + punishment)
                 irc.reply('You\'ve given me %s commands within the last '
-                          'minute; I\'m now ignoring you for %s.' %
+                          '%i seconds; I\'m now ignoring you for %s.' %
                           (maximum,
+                           conf.supybot.abuse.flood.interval(),
                            utils.timeElapsed(punishment, seconds=False)))
                 return
             try:
@@ -383,8 +384,8 @@ class Owner(callbacks.Plugin):
         L = []
         if level == 'high':
             L.append(format('Regexp cache flushed: %n cleared.',
-                            (len(sre._cache), 'regexp')))
-            sre.purge()
+                            (len(re._cache), 'regexp')))
+            re.purge()
             L.append(format('Pattern cache flushed: %n cleared.',
                             (len(ircutils._patternCache), 'compiled pattern')))
             ircutils._patternCache.clear()

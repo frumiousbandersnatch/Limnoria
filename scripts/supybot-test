@@ -146,13 +146,22 @@ if __name__ == '__main__':
                       action='append', dest='excludePlugins', default=[],
                       help='List of plugins you do not want --plugins-dir '
                       'to include.')
+    parser.add_option('', '--disable-multiprocessing', action='store_true',
+                      dest='disableMultiprocessing',
+                      help='Disables multiprocessing stuff.')
     (options, args) = parser.parse_args()
+
+    conf.disableMultiprocessing = options.disableMultiprocessing
 
     # This must go before checking for args, of course.
     for pluginDir in options.pluginsDirs:
         for name in glob.glob(os.path.join(pluginDir, '*')):
             #print '***', name
-            if name not in options.excludePlugins and os.path.isdir(name):
+            print(repr(name))
+            if not any(map(lambda x:name in x,
+                           map(glob.glob, options.excludePlugins))) and \
+                    os.path.isdir(name):
+                print('foo')
                 args.append(name)
 
     if not args:
@@ -190,7 +199,7 @@ if __name__ == '__main__':
             pluginName = pluginName[:-3]
         try:
             pluginModule = plugin.loadPluginModule(pluginName)
-        except (ImportError, callbacks.Error), e:
+        except (ImportError, callbacks.Error) as e:
             sys.stderr.write('Failed to load plugin %s: %s\n' % (pluginName,e))
             sys.stderr.write('(pluginDirs: %s)\n' %
                              conf.supybot.directories.plugins())
@@ -200,7 +209,7 @@ if __name__ == '__main__':
 
     suite = unittest.TestSuite(test.suites)
     runner = unittest.TextTestRunner(verbosity=2)
-    print 'Testing began at %s (pid %s)' % (time.ctime(), os.getpid())
+    print('Testing began at %s (pid %s)' % (time.ctime(), os.getpid()))
     if options.clean:
         shutil.rmtree(conf.supybot.directories.log())
         shutil.rmtree(conf.supybot.directories.conf())
@@ -208,7 +217,7 @@ if __name__ == '__main__':
     result = runner.run(suite)
 
     if hasattr(unittest, 'asserts'):
-        print 'Total asserts: %s' % unittest.asserts
+        print('Total asserts: %s' % unittest.asserts)
 
     if result.wasSuccessful():
         sys.exit(0)

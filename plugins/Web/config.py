@@ -49,6 +49,9 @@ Web = conf.registerPlugin('Web')
 conf.registerChannelValue(Web, 'titleSnarfer',
     registry.Boolean(False, _("""Determines whether the bot will output the
     HTML title of URLs it sees in the channel.""")))
+conf.registerChannelValue(Web, 'snarferReportIOExceptions',
+    registry.Boolean(False, _("""Determines whether the bot will notfiy the user
+    about network exceptions like hostnotfound, timeout ....""")))
 conf.registerChannelValue(Web, 'nonSnarfingRegexp',
     registry.Regexp(None, _("""Determines what URLs matching the given regexp
     will not be snarfed.  Give the empty string if you have no URLs that you'd
@@ -56,6 +59,12 @@ conf.registerChannelValue(Web, 'nonSnarfingRegexp',
 conf.registerChannelValue(Web, 'ignoredNicks',
     registry.SpaceSeparatedListOfStrings([],"""Nicks to ignore when snarfing
     URLs"""))
+
+conf.registerGlobalValue(Web, 'urlWhitelist',
+    registry.SpaceSeparatedListOfStrings([], """If set, bot will only fetch data
+    from urls in the whitelist, i.e. starting with http://domain/optionalpath/. This will
+    apply to all commands that retrieve data from user-supplied URLs,
+    including fetch, headers, title, doctype."""))
 
 conf.registerGroup(Web, 'fetch')
 conf.registerGlobalValue(Web.fetch, 'maximum',

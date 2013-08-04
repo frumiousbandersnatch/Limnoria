@@ -51,8 +51,13 @@ class Channel(callbacks.Plugin):
         channel = msg.args[0]
         if msg.args[1] == irc.nick:
             if self.registryValue('alwaysRejoin', channel):
+                self.log.info('Kicked from %s by %s. Rejoining.' %
+                        (channel, msg.prefix))
                 networkGroup = conf.supybot.networks.get(irc.network)
                 irc.sendMsg(networkGroup.channels.join(channel))
+            else:
+                self.log.info('Kicked from %s by %s. Not auto-rejoining.' %
+                        (channel, msg.prefix))
 
     def _sendMsg(self, irc, msg):
         irc.queueMsg(msg)
@@ -73,7 +78,7 @@ class Channel(callbacks.Plugin):
         itself.
         """
         self._sendMsg(irc, ircmsgs.mode(channel, modes))
-    mode = wrap(mode, ['op', ('isGranted', _('change the mode')), many('something')])
+    mode = wrap(mode, ['op', ('haveHalfop+', _('change the mode')), many('something')])
 
     @internationalizeDocstring
     def limit(self, irc, msg, args, channel, limit):
@@ -99,7 +104,7 @@ class Channel(callbacks.Plugin):
         message isn't sent in the channel itself.
         """
         self._sendMsg(irc, ircmsgs.mode(channel, ['+m']))
-    moderate = wrap(moderate, ['op', ('isGranted', _('moderate the channel'))])
+    moderate = wrap(moderate, ['op', ('haveHalfop+', _('moderate the channel'))])
 
     @internationalizeDocstring
     def unmoderate(self, irc, msg, args, channel):
@@ -110,7 +115,7 @@ class Channel(callbacks.Plugin):
         message isn't sent in the channel itself.
         """
         self._sendMsg(irc, ircmsgs.mode(channel, ['-m']))
-    unmoderate = wrap(unmoderate, ['op', ('isGranted',
+    unmoderate = wrap(unmoderate, ['op', ('haveHalfop+',
                                    _('unmoderate the channel'))])
 
     @internationalizeDocstring
@@ -127,7 +132,7 @@ class Channel(callbacks.Plugin):
             self._sendMsg(irc, ircmsgs.mode(channel, ['+k', key]))
         else:
             self._sendMsg(irc, ircmsgs.mode(channel, ['-k']))
-    key = wrap(key, ['op', ('isGranted', _('change the keyword')),
+    key = wrap(key, ['op', ('haveHalfop+', _('change the keyword')),
                      additional('somethingWithoutSpaces', '')])
 
     @internationalizeDocstring
@@ -189,7 +194,7 @@ class Channel(callbacks.Plugin):
         channel itself.
         """
         self._voice(irc, msg, args, channel, nicks, ircmsgs.voices)
-    voice = wrap(voice, ['channel', ('isGranted', _('voice someone')),
+    voice = wrap(voice, ['channel', ('haveHalfop+', _('voice someone')),
                          any('nickInChannel')])
 
     @internationalizeDocstring
@@ -281,7 +286,7 @@ class Channel(callbacks.Plugin):
                       Raise=True)
         for nick in nicks:
             self._sendMsg(irc, ircmsgs.kick(channel, nick, reason))
-    kick = wrap(kick, ['op', ('isGranted', _('kick someone')),
+    kick = wrap(kick, ['op', ('haveHalfop+', _('kick someone')),
                        commalist('nickInChannel'), additional('text')])
 
     @internationalizeDocstring
@@ -304,7 +309,7 @@ class Channel(callbacks.Plugin):
     kban = wrap(kban,
                 ['op',
                  getopts({'exact':'', 'nick':'', 'user':'', 'host':''}),
-                 ('isGranted', _('kick or ban someone')),
+                 ('haveHalfop+', _('kick or ban someone')),
                  'nickInChannel',
                  optional('expiry', 0),
                  additional('text')])
@@ -328,7 +333,7 @@ class Channel(callbacks.Plugin):
     iban = wrap(iban,
                 ['op',
                  getopts({'exact':'', 'nick':'', 'user':'', 'host':''}),
-                 ('isGranted', _('ban someone')),
+                 ('haveHalfop+', _('ban someone')),
                  first('nick', 'hostmask'),
                  optional('expiry', 0)])
 
@@ -434,7 +439,7 @@ class Channel(callbacks.Plugin):
                 irc.error(_('No bans matching %s were found on %s.') %
                           (msg.prefix, channel))
     unban = wrap(unban, ['op',
-                         ('isGranted', _('unban someone')),
+                         ('haveHalfop+', _('unban someone')),
                          additional(
                              first('hostmask',
                                  ('literal', '--all')))])
@@ -459,7 +464,7 @@ class Channel(callbacks.Plugin):
         nick = nick or msg.nick
         self._sendMsg(irc, ircmsgs.invite(nick, channel))
         self.invites[(irc.getRealIrc(), ircutils.toLower(nick))] = irc
-    invite = wrap(invite, ['op', ('isGranted', _('invite someone')),
+    invite = wrap(invite, ['op', ('haveHalfop+', _('invite someone')),
                            additional('nick')])
 
     def do341(self, irc, msg):

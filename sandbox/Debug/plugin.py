@@ -40,7 +40,16 @@ import gc
 import os
 import pwd
 import sys
-import exceptions
+try:
+    import exceptions
+except ImportError: # Python 3
+    import builtins
+    class exceptions:
+        """Pseudo-module"""
+        pass
+    for (key, value) in exceptions.__dict__.items():
+        if isinstance(value, type) and issubclass(value, Exception):
+            exceptions[key] = value
 
 import supybot.conf as conf
 import supybot.utils as utils
@@ -118,7 +127,10 @@ class Debug(callbacks.Privmsg):
 
         Raises the exception matching <exception name>.
         """
-        exn = getattr(exceptions, name)
+        if isinstance(__builtins__, dict):
+            exn = __builtins__[name]
+        else:
+            exn = getattr(__builtins__, name)
         raise exn, msg.prefix
     exn = wrap(exn, ['text'])
 
@@ -175,6 +187,7 @@ class Debug(callbacks.Privmsg):
         irc.reply(format('%L', map(str, L)))
     collect = wrap(collect, [additional('positiveInt', 1)])
 
+    _progstats_endline_remover = utils.str.MultipleRemover('\r\n')
     def progstats(self, irc, msg, args):
         """takes no arguments
 
@@ -186,7 +199,7 @@ class Debug(callbacks.Privmsg):
                    'Running on Python %s.' % \
                    (os.getpid(), pw[0], pw[3],
                     os.getcwd(), ' '.join(sys.argv),
-                    sys.version.translate(string.ascii, '\r\n'))
+                    self._progstats_endline_remover(sys.version))
         irc.reply(response)
     progstats = wrap(progstats)
 

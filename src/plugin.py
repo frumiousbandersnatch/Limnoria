@@ -60,6 +60,10 @@ def loadPluginModule(name, ignoreDeprecation=False):
         module = imp.load_module(name, *moduleInfo)
     except:
         sys.modules.pop(name, None)
+        keys = sys.modules.keys()
+        for key in keys:
+            if key.startswith(name + '.'):
+                sys.modules.pop(key)
         raise
     if 'deprecated' in module.__dict__ and module.deprecated:
         if ignoreDeprecation:

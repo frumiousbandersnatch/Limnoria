@@ -196,7 +196,8 @@ class Filter(callbacks.Plugin):
         <hexstring> must be a string of hexadecimal digits.
         """
         try:
-            irc.reply(self._hex_decoder(text.encode('utf8'))[0].decode('utf8'))
+            irc.reply(self._hex_decoder(text.encode('utf8'))[0]
+                    .decode('utf8', 'replace'))
         except TypeError:
             irc.error(_('Invalid input.'))
     unhexlify = wrap(unhexlify, ['text'])
@@ -411,8 +412,12 @@ class Filter(callbacks.Plugin):
 
         Returns <text> colorized like a rainbow.
         """
+        if sys.version_info[0] < 3:
+            text = text.decode('utf-8')
         colors = utils.iter.cycle(['04', '07', '08', '03', '02', '12', '06'])
         L = [self._color(c, fg=colors.next()) for c in text]
+        if sys.version_info[0] < 3:
+            L = [c.encode('utf-8') for c in L]
         irc.reply(''.join(L) + '\x03')
     rainbow = wrap(rainbow, ['text'])
 
@@ -729,7 +734,7 @@ class Filter(callbacks.Plugin):
             elif ord(c) >= 32:
                 turned.insert(0, c)
                 tlen += 1
-        s = '%s \x02 \x02' % ''.join(map(lambda x: x.encode('utf-8'), turned))
+        s = '%s \x02 \x02' % ''.join(turned)
         irc.reply(s)
     uniud = wrap(uniud, ['text'])
 Filter = internationalizeDocstring(Filter)

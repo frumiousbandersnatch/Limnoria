@@ -465,7 +465,8 @@ class RichReplyMethods(object):
         return self.reply(s, **kwargs)
 
     def replies(self, L, prefixer=None, joiner=None,
-                onlyPrefixFirst=False, to=None, **kwargs):
+                onlyPrefixFirst=False, to=None,
+                oneToOne=None, **kwargs):
         if prefixer is None:
             prefixer = ''
         if joiner is None:
@@ -474,10 +475,11 @@ class RichReplyMethods(object):
             prefixer = prefixer.__add__
         if isinstance(joiner, basestring):
             joiner = joiner.join
-        if ircutils.isChannel(to):
-            oneToOne = conf.get(conf.supybot.reply.oneToOne, to)
-        else:
-            oneToOne = conf.supybot.reply.oneToOne()
+        if oneToOne is None: # Can be True, False, or None
+            if ircutils.isChannel(to):
+                oneToOne = conf.get(conf.supybot.reply.oneToOne, to)
+            else:
+                oneToOne = conf.supybot.reply.oneToOne()
         if oneToOne:
             return self.reply(prefixer(joiner(L)), to=to, **kwargs)
         else:
@@ -517,7 +519,10 @@ class RichReplyMethods(object):
                 v = self._getConfig(conf.supybot.replies.genericNoCapability)
             else:
                 v = self._getConfig(conf.supybot.replies.noCapability)
-                v %= capability
+                try:
+                    v %= capability
+                except TypeError: # No %s in string
+                    pass
             s = self.__makeReply(v, s)
             if s:
                 return self._error(s, **kwargs)

@@ -32,6 +32,7 @@ import time
 import types
 import socket
 import threading
+import re
 
 import supybot.conf as conf
 import supybot.utils as utils
@@ -72,6 +73,7 @@ class RSS(callbacks.Plugin):
         self.locks = {}
         self.lastRequest = {}
         self.cachedFeeds = {}
+        self.cachedHeadlines = {}
         self.gettingLockLock = threading.Lock()
         for name in self.registryValue('feeds'):
             self._registerFeed(name)
@@ -139,19 +141,31 @@ class RSS(callbacks.Plugin):
                     self.releaseLock(url)
                     time.sleep(0.1) # So other threads can run.
 
-    def buildHeadlines(self, headlines, channel, config='announce.showLinks'):
+    def buildHeadlines(self, headlines, channel, linksconfig='announce.showLinks', dateconfig='announce.showPubDate'):
         newheadlines = []
-        if self.registryValue(config, channel):
-            for headline in headlines:
+        for headline in headlines:
+            link = ''
+            pubDate = ''
+            if self.registryValue(linksconfig, channel):
                 if headline[1]:
-                    newheadlines.append(format('%s %u',
-                                               headline[0],
-                                               headline[1].encode('utf-8')))
-                else:
-                    newheadlines.append(format('%s', headline[0]))
-        else:
-            for headline in headlines:
-                newheadlines = [format('%s', h[0]) for h in headlines]
+                    if self.registryValue('stripRedirect'):
+                        link = re.sub('^.*http://', 'http://', headline[1])
+                    else:
+                        link = headline[1]
+            if self.registryValue(dateconfig, channel):
+                if headline[2]:
+                    pubDate = ' [%s]' % (headline[2],)
+            try:
+                newheadlines.append(format('%s %u%s',
+                                           headline[0],
+                                           link,
+                                           pubDate))
+            except UnicodeDecodeError:
+                newheadlines.append(format('%s %u%s',
+                                           headline[0].decode('utf8',
+                                                              'replace'),
+                                           link,
+                                           pubDate))
         return newheadlines
 
     def _newHeadlines(self, irc, channels, name, url):
@@ -163,9 +177,12 @@ class RSS(callbacks.Plugin):
             # Note that we're allowed to acquire this lock twice within the
             # same thread because it's an RLock and not just a normal Lock.
             self.acquireLock(url)
+            t = time.time()
             try:
-                oldresults = self.cachedFeeds[url]
-                oldheadlines = self.getHeadlines(oldresults)
+                #oldresults = self.cachedFeeds[url]
+                #oldheadlines = self.getHeadlines(oldresults)
+                oldheadlines = self.cachedHeadlines[url]
+                oldheadlines = filter(lambda x: t - x[3] < self.registryValue('announce.cachePeriod'), oldheadlines)
             except KeyError:
                 oldheadlines = []
             newresults = self.getFeed(url)
@@ -178,11 +195,13 @@ class RSS(callbacks.Plugin):
                     return
             def normalize(headline):
                 return (tuple(headline[0].lower().split()), headline[1])
-            oldheadlines = set(map(normalize, oldheadlines))
+            oldheadlinesset = set(map(normalize, oldheadlines))
             for (i, headline) in enumerate(newheadlines):
-                if normalize(headline) in oldheadlines:
+                if normalize(headline) in oldheadlinesset:
                     newheadlines[i] = None
             newheadlines = filter(None, newheadlines) # Removes Nones.
+            oldheadlines.extend(newheadlines)
+            self.cachedHeadlines[url] = oldheadlines
             if newheadlines:
                 def filter_whitelist(headline):
                     v = False
@@ -214,7 +233,8 @@ class RSS(callbacks.Plugin):
                     bold = self.registryValue('bold', channel)
                     sep = self.registryValue('headlineSeparator', channel)
                     prefix = self.registryValue('announcementPrefix', channel)
-                    pre = format('%s%s: ', prefix, name)
+                    suffix = self.registryValue('announcementSeparator', channel)
+                    pre = format('%s%s%s', prefix, name, suffix)
                     if bold:
                         pre = ircutils.bold(pre)
                         sep = ircutils.bold(sep)
@@ -260,7 +280,7 @@ class RSS(callbacks.Plugin):
                 try:
                     self.log.debug('Downloading new feed from %u', url)
                     results = feedparser.parse(url)
-                    if 'bozo_exception' in results:
+                    if 'bozo_exception' in results and not results['entries']:
                         raise results['bozo_exception']
                 except feedparser.sgmllib.SGMLParseError:
                     self.log.exception('Uncaught exception from feedparser:')
@@ -322,15 +342,14 @@ class RSS(callbacks.Plugin):
 
     def getHeadlines(self, feed):
         headlines = []
+        t = time.time()
         conv = self._getConverter(feed)
         for d in self._sortFeedItems(feed['items']):
             if 'title' in d:
                 title = conv(d['title'])
                 link = d.get('link')
-                if link:
-                    headlines.append((title, link))
-                else:
-                    headlines.append((title, None))
+                pubDate = d.get('pubDate', d.get('updated'))
+                headlines.append((title, link, pubDate, t))
         return headlines
 
     @internationalizeDocstring
@@ -449,7 +468,7 @@ class RSS(callbacks.Plugin):
         if not headlines:
             irc.error(_('Couldn\'t get RSS feed.'))
             return
-        headlines = self.buildHeadlines(headlines, channel, 'showLinks')
+        headlines = self.buildHeadlines(headlines, channel, 'showLinks', 'showPubDate')
         if n:
             headlines = headlines[:n]
         else:

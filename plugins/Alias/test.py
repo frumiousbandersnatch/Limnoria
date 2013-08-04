@@ -1,3 +1,4 @@
+# -*- coding: utf8 -*-
 ###
 # Copyright (c) 2002-2004, Jeremiah Fincher
 # All rights reserved.
@@ -68,6 +69,8 @@ class AliasTestCase(ChannelPluginTestCase):
     def testAliasHelp(self):
         self.assertNotError('alias add slashdot foo')
         self.assertRegexp('help slashdot', "Alias for .*foo")
+        self.assertNotError('alias add nonascii echo éé')
+        self.assertRegexp('help nonascii', "Alias for .*echo éé")
 
     def testRemove(self):
         self.assertNotError('alias add foo echo bar')
@@ -143,6 +146,13 @@ class EscapedAliasTestCase(ChannelPluginTestCase):
 
         self.assertNotError('alias add spam|egg echo hey')
         self.assertResponse('spam|egg', 'hey')
+
+        self.assertNotError('alias remove spam.egg')
+        self.assertError('spam.egg')
+        self.assertNotError('spam|egg')
+        self.assertNotError('alias remove spam|egg')
+        self.assertError('spam.egg')
+        self.assertError('spam|egg')
 
     def testWriteDatabase(self):
         self.assertNotError('alias add fooo.spam echo egg')

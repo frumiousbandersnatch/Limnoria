@@ -245,10 +245,16 @@ class ChannelState(utils.python.Object):
 
     def isOp(self, nick):
         return nick in self.ops
+    def isOpPlus(self, nick):
+        return nick in self.ops
     def isVoice(self, nick):
         return nick in self.voices
+    def isVoicePlus(self, nick):
+        return nick in self.voices or nick in self.halfops or nick in self.ops
     def isHalfop(self, nick):
         return nick in self.halfops
+    def isHalfopPlus(self, nick):
+        return nick in self.halfops or nick in self.ops
 
     def addUser(self, user):
         "Adds a given user to the ChannelState.  Power prefixes are handled."
@@ -273,7 +279,7 @@ class ChannelState(utils.python.Object):
         """Changes the user oldNick to newNick; used for NICK changes."""
         # Note that this doesn't have to have the sigil (@%+) that users
         # have to have for addUser; it just changes the name of the user
-        # without changing any of his categories.
+        # without changing any of their categories.
         for s in (self.users, self.ops, self.halfops, self.voices):
             if oldNick in s:
                 s.remove(oldNick)
@@ -352,6 +358,7 @@ class IrcState(IrcCommandDispatcher):
             nicksToHostmasks = ircutils.IrcDict()
         if channels is None:
             channels = ircutils.IrcDict()
+        self.ircd = None
         self.supported = supported
         self.history = history
         self.channels = channels
@@ -408,6 +415,7 @@ class IrcState(IrcCommandDispatcher):
         Supported user and channel modes are cached"""
         # msg.args = [nick, server, ircd-version, umodes, modes,
         #             modes that require arguments? (non-standard)]
+        self.ircd = msg.args[2]
         self.supported['umodes'] = msg.args[3]
         self.supported['chanmodes'] = msg.args[4]
 
@@ -510,8 +518,14 @@ class IrcState(IrcCommandDispatcher):
     def do367(self, irc, msg):
         # Example:
         # :server 367 user #chan some!random@user evil!channel@op 1356276459
-        state = self.channels[msg.args[1]]
-        state.bans.add(msg.args[2])
+        try:
+            state = self.channels[msg.args[1]]
+        except KeyError:
+            # We have been kicked of the channel before the server replied to
+            # the MODE +b command.
+            pass
+        else:
+            state.bans.add(msg.args[2])
 
     def doMode(self, irc, msg):
         channel = msg.args[0]
@@ -902,6 +916,7 @@ class Irc(IrcCommandDispatcher):
         self.lastTake = 0
         self.server = 'unset'
         self.afterConnect = False
+        self.startedAt = time.time()
         self.lastping = time.time()
         self.outstandingPing = False
 

@@ -219,12 +219,14 @@ msgid "Sorry, I can't find any mores for %s"
 msgstr "Spiacente, non trovo alcun \"more\" per %s"
 
 #: plugin.py:323
-msgid "more message"
+#, fuzzy
+msgid "1 more message"
 msgstr "altro messaggio"
 
 #: plugin.py:325
-msgid "more messages"
-msgstr "altri messaggi"
+#, fuzzy
+msgid "%i more messages"
+msgstr "%i altri messaggi"
 
 #: plugin.py:329
 msgid "You haven't asked me a command; perhaps you want to see someone else's more.  To do so, call this command with that person's nick."
@@ -281,7 +283,7 @@ msgstr ""
 "        "
 
 #: plugin.py:483
-msgid "Dude, just give the command.  No need for the tell."
+msgid "Hey, just give the command.  No need for the tell."
 msgstr "Dammi il comando, non c'è bisogno di usare \"tell\"."
 
 #: plugin.py:488

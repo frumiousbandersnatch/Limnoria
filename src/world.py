@@ -36,13 +36,11 @@ import os
 import sys
 import time
 import atexit
+import select
 import threading
-import multiprocessing # python 2.6 and later!
+import multiprocessing
 
-if sys.version_info >= (2, 5, 0):
-    import re as sre
-else:
-    import sre
+import re
 
 import supybot.log as log
 import supybot.conf as conf
@@ -75,6 +73,28 @@ class SupyProcess(multiprocessing.Process):
         processesSpawned += 1
         super(SupyProcess, self).__init__(*args, **kwargs)
         log.debug('Spawning process %q.', self.name)
+
+if sys.version_info[0:3] == (3, 3, 1) and hasattr(select, 'poll'):
+    # http://bugs.python.org/issue17707
+    import multiprocessing.connection
+    def _poll(fds, timeout):
+        if timeout is not None:
+            timeout = int(timeout * 1000)  # timeout is in milliseconds
+        fd_map = {}
+        pollster = select.poll()
+        for fd in fds:
+            pollster.register(fd, select.POLLIN)
+            if hasattr(fd, 'fileno'):
+                fd_map[fd.fileno()] = fd
+            else:
+                fd_map[fd] = fd
+        ls = []
+        for fd, event in pollster.poll(timeout):
+            if event & select.POLLNVAL:
+                raise ValueError('invalid file descriptor %i' % fd)
+            ls.append(fd_map[fd])
+        return ls
+    multiprocessing.connection._poll = _poll
 
 
 commandsProcessed = 0
@@ -133,7 +153,6 @@ def upkeep():
         # object, so let's see if anything's been printed, and if so, let's
         # log.warning it (things shouldn't be printed, and we're more likely
         # to get bug reports if we make it a warning).
-        assert not type(sys.stdout) == file, 'Not a StringIO object!'
         if not hasattr(sys.stdout, 'getvalue'):
             # Stupid twisted sometimes replaces our stdout with theirs, because
             # "The Twisted Way Is The Right Way" (ha!).  So we're stuck simply
@@ -143,13 +162,12 @@ def upkeep():
         s = sys.stdout.getvalue()
         if s:
             log.warning('Printed to stdout after daemonization: %s', s)
-            sys.stdout.reset() # Seeks to 0.
+            sys.stdout.seek(0)
             sys.stdout.truncate() # Truncates to current offset.
-        assert not type(sys.stderr) == file, 'Not a StringIO object!'
         s = sys.stderr.getvalue()
         if s:
             log.error('Printed to stderr after daemonization: %s', s)
-            sys.stderr.reset() # Seeks to 0.
+            sys.stderr.seek(0)
             sys.stderr.truncate() # Truncates to current offset.
     doFlush = conf.supybot.flush() and not starting
     if doFlush:
@@ -160,7 +178,7 @@ def upkeep():
         #    registry.open(registryFilename)
     if not dying:
         if sys.version_info[0] < 3:
-            log.debug('Regexp cache size: %s', len(sre._cache))
+            log.debug('Regexp cache size: %s', len(re._cache))
         log.debug('Pattern cache size: %s', len(ircutils._patternCache))
         log.debug('HostmaskPatternEqual cache size: %s',
                   len(ircutils._hostmaskPatternEqualCache))

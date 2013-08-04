@@ -84,6 +84,14 @@ def process(f, *args, **kwargs):
     <timeout>, if supplied, limits the length of execution of target 
     function to <timeout> seconds."""
     timeout = kwargs.pop('timeout', None)
+
+    if conf.disableMultiprocessing:
+        pn = kwargs.pop('pn', 'Unknown')
+        cn = kwargs.pop('cn', 'unknown')
+        try:
+            return f(*args, **kwargs)
+        except Exception as e:
+            return e
     
     q = multiprocessing.Queue()
     def newf(f, q, *args, **kwargs):
@@ -317,6 +325,16 @@ def getHaveVoice(irc, msg, args, state, action=_('do that')):
     if not irc.state.channels[state.channel].isVoice(irc.nick):
         state.error(_('I need to be voiced to %s.') % action, Raise=True)
 
+def getHaveVoicePlus(irc, msg, args, state, action=_('do that')):
+    if not state.channel:
+        getChannel(irc, msg, args, state)
+    if state.channel not in irc.state.channels:
+        state.error(_('I\'m not even in %s.') % state.channel, Raise=True)
+    if not irc.state.channels[state.channel].isVoicePlus(irc.nick):
+        # isOp includes owners and protected users
+        state.error(_('I need to be at least voiced to %s.') % action,
+                Raise=True)
+
 def getHaveHalfop(irc, msg, args, state, action=_('do that')):
     if not state.channel:
         getChannel(irc, msg, args, state)
@@ -325,6 +343,16 @@ def getHaveHalfop(irc, msg, args, state, action=_('do that')):
     if not irc.state.channels[state.channel].isHalfop(irc.nick):
         state.error(_('I need to be halfopped to %s.') % action, Raise=True)
 
+def getHaveHalfopPlus(irc, msg, args, state, action=_('do that')):
+    if not state.channel:
+        getChannel(irc, msg, args, state)
+    if state.channel not in irc.state.channels:
+        state.error(_('I\'m not even in %s.') % state.channel, Raise=True)
+    if not irc.state.channels[state.channel].isHalfopPlus(irc.nick):
+        # isOp includes owners and protected users
+        state.error(_('I need to be at least halfopped to %s.') % action,
+                Raise=True)
+
 def getHaveOp(irc, msg, args, state, action=_('do that')):
     if not state.channel:
         getChannel(irc, msg, args, state)
@@ -332,17 +360,6 @@ def getHaveOp(irc, msg, args, state, action=_('do that')):
         state.error(_('I\'m not even in %s.') % state.channel, Raise=True)
     if not irc.state.channels[state.channel].isOp(irc.nick):
         state.error(_('I need to be opped to %s.') % action, Raise=True)
-
-def getIsGranted(irc, msg, args, state, action=_('do that')):
-    if not state.channel:
-        getChannel(irc, msg, args, state)
-    if state.channel not in irc.state.channels:
-        state.error(_('I\'m not even in %s.') % state.channel, Raise=True)
-    if not irc.state.channels[state.channel].isOp(irc.nick) and \
-            not irc.state.channels[state.channel].isHalfop(irc.nick):
-        # isOp includes owners and protected users
-        state.error(_('I need to be at least halfopped to %s.') % action,
-                Raise=True)
 
 def validChannel(irc, msg, args, state):
     if irc.isChannel(args[0]):
@@ -561,7 +578,8 @@ def getSomething(irc, msg, args, state, errorMsg=None, p=None):
 def getSomethingNoSpaces(irc, msg, args, state, *L):
     def p(s):
         return len(s.split(None, 1)) == 1
-    getSomething(irc, msg, args, state, p=p, *L)
+    getSomething(irc, msg, args, state, p=p, errorMsg=_('You must not give a '
+            'string containing spaces as an argument.'), *L)
 
 def private(irc, msg, args, state):
     if irc.isChannel(msg.args[0]):
@@ -692,8 +710,7 @@ wrappers = ircutils.IrcDict({
     'banmask': getBanmask,
     'boolean': getBoolean,
     'callerInGivenChannel': callerInGivenChannel,
-    'isGranted': getIsGranted, # I know this name sucks, but I can't find
-                               # something better
+    'isGranted': getHaveHalfopPlus, # Backward compatibility
     'capability': getSomethingNoSpaces,
     'channel': getChannel,
     'channelOrGlobal': getChannelOrGlobal,
@@ -710,8 +727,11 @@ wrappers = ircutils.IrcDict({
     'glob': getGlob,
     'halfop': getHalfop,
     'haveHalfop': getHaveHalfop,
+    'haveHalfop+': getHaveHalfopPlus,
     'haveOp': getHaveOp,
+    'haveOp+': getHaveOp, # We don't handle modes greater than op.
     'haveVoice': getHaveVoice,
+    'haveVoice+': getHaveVoicePlus,
     'hostmask': getHostmask,
     'httpUrl': getHttpUrl,
     'id': getId,
@@ -888,6 +908,7 @@ class first(context):
                 spec(irc, msg, args, state)
                 return
             except Exception, e:
+                e2 = e # 'e' is local.
                 errored = state.errored
                 state.errored = False
                 continue
@@ -895,7 +916,7 @@ class first(context):
             state.args.append(self.default)
         else:
             state.errored = errored
-            raise e
+            raise e2
 
 class reverse(context):
     def __call__(self, irc, msg, args, state):
@@ -1018,8 +1039,11 @@ class Spec(object):
             raise callbacks.ArgumentError
         return state
 
-def wrap(f, specList=[], name=None, **kw):
+def _wrap(f, specList=[], name=None, checkDoc=True, **kw):
     name = name or f.func_name
+    assert (not checkDoc) or (hasattr(f, '__doc__') and f.__doc__), \
+                'Command %r has no docstring.' % name
+    f = internationalizeDocstring(f)
     spec = Spec(specList, **kw)
     def newf(self, irc, msg, args, **kwargs):
         state = spec(irc, msg, args, stateAttrs={'cb': self, 'log': self.log})
@@ -1039,6 +1063,19 @@ def wrap(f, specList=[], name=None, **kw):
                                'function ;)')
                 raise
     return utils.python.changeFunctionName(newf, name, f.__doc__)
+
+def wrap(f, *args, **kwargs):
+    if callable(f):
+        # Old-style call OR decorator syntax with no converter.
+        # f is the command.
+        return _wrap(f, *args, **kwargs)
+    else:
+        # Call with the Python decorator syntax
+        assert isinstance(f, list) or isinstance(f, tuple)
+        specList = f
+        def decorator(f):
+            return _wrap(f, specList, *args, **kwargs)
+        return decorator
 wrap.__doc__ = """Useful wrapper for plugin commands.
 
 Valid converters are: %s.

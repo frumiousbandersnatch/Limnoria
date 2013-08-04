@@ -35,14 +35,18 @@ import sys
 import tempfile
 import subprocess
 
+debug = '--debug' in sys.argv
+
 path = os.path.dirname(__file__)
+if debug:
+    print('DEBUG: Changing dir from %r to %r' % (os.getcwd(), path))
 if path:
     os.chdir(path)
 
 version = None
 try:
     proc = subprocess.Popen('git show HEAD --format=%ci', shell=True,
-            stdout=subprocess.PIPE)
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     version = proc.stdout.readline() \
             .strip() \
             .replace(' +', '+') \
@@ -64,19 +68,6 @@ if sys.version_info < (2, 6, 0):
     sys.stderr.write("Supybot requires Python 2.6 or newer.")
     sys.stderr.write(os.linesep)
     sys.exit(-1)
-elif sys.version_info[0] >= 3 and \
-        not os.path.split(os.path.abspath(os.path.dirname(__file__)))[-1] == 'py3k':
-    # The second condition is used to prevent this script to run recursively
-    print('Converting code from Python 2 to Python 3. This make take a '
-            'few minutes.')
-    # For some reason, using open(os.devnull) makes the subprocess exit before
-    # it finishes...
-    subprocess.Popen([sys.executable, os.path.join('2to3', 'run.py')],
-            stdout=tempfile.TemporaryFile(),
-            stderr=tempfile.TemporaryFile()).wait()
-    os.chdir('py3k')
-    subprocess.Popen([sys.executable] + sys.argv).wait()
-    exit()
 
 
 import textwrap
@@ -116,6 +107,52 @@ except ImportError as e:
     sys.stderr.write(textwrap.fill(s))
     sys.stderr.write(os.linesep*2)
     sys.exit(-1)
+try:
+    from distutils.command.build_py import build_py_2to3
+    class build_py(build_py_2to3):
+        def run_2to3(self, files, options=None):
+            from distutils import log
+            from lib2to3.refactor import RefactoringTool, get_fixers_from_package
+            if not files:
+                return
+
+            # Make this class local, to delay import of 2to3
+            from lib2to3.refactor import RefactoringTool, get_fixers_from_package
+            class DistutilsRefactoringTool(RefactoringTool):
+                def refactor(self, files, *args, **kwargs):
+                    self._total_files = len(files)
+                    self._refactored_files = 0
+                    super(DistutilsRefactoringTool, self).refactor(files,
+                            *args, **kwargs)
+                    del self._total_files
+                    del self._refactored_files
+                def refactor_file(self, filename, *args, **kwargs):
+                    if self._total_files//10 != 0 and \
+                            self._refactored_files % (self._total_files//10) == 0:
+                        print('Refactoring files: %i%% (%i on %i).' %
+                                (self._refactored_files/(self._total_files//10)*10,
+                                 self._refactored_files, self._total_files))
+                    self._refactored_files += 1
+                    return super(DistutilsRefactoringTool, self).refactor_file(
+                            filename, *args, **kwargs)
+                def log_error(self, msg, *args, **kw):
+                    log.error(msg, *args)
+
+                def log_message(self, msg, *args):
+                    log.info(msg, *args)
+
+                def log_debug(self, msg, *args):
+                    log.debug(msg, *args)
+
+            fixer_names = get_fixers_from_package('lib2to3.fixes')
+            fixer_names.remove('lib2to3.fixes.fix_import')
+            fixer_names += get_fixers_from_package('2to3')
+            r = DistutilsRefactoringTool(fixer_names, options=options)
+            r.refactor(files, write=True)
+except ImportError:
+    # 2.x
+    from distutils.command.build_py import build_py
+
 
 if clean:
     previousInstall = os.path.join(get_python_lib(), 'supybot')
@@ -137,7 +174,6 @@ packages = ['supybot',
              'supybot.plugins.Dict.local',
              'supybot.plugins.Math.local',
              'supybot.plugins.Google.local',
-             'supybot.plugins.Google.local.simplejson',
              'supybot.plugins.RSS.local',
              'supybot.plugins.Time.local',
              'supybot.plugins.Time.local.dateutil',
@@ -149,8 +185,6 @@ package_dir = {'supybot': 'src',
                'supybot.drivers': 'src/drivers',
                'supybot.locales': 'locales',
                'supybot.plugins.Google.local': 'plugins/Google/local',
-               'supybot.plugins.Google.local.simplejson':
-               'plugins/Google/local/simplejson',
                'supybot.plugins.Dict.local': 'plugins/Dict/local',
                'supybot.plugins.Math.local': 'plugins/Math/local',
                'supybot.plugins.RSS.local': 'plugins/RSS/local',
@@ -197,6 +231,7 @@ setup(
         'Operating System :: Microsoft :: Windows',
         'Programming Language :: Python',
         ],
+    cmdclass = {'build_py': build_py},
 
     # Installation data
     packages=packages,

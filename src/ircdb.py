@@ -225,6 +225,7 @@ class IrcUser(object):
             self.nicks = {} # {'network1': ['foo', 'bar'], 'network': ['baz']}
         else:
             self.nicks = nicks
+        self.gpgkeys = [] # GPG key ids
 
     def __repr__(self):
         return format('%s(id=%s, ignore=%s, password="", name=%q, hashed=%r, '
@@ -357,6 +358,8 @@ class IrcUser(object):
             write('hostmask %s' % hostmask)
         for network, nicks in self.nicks.items():
             write('nicks %s %s' % (network, ' '.join(nicks)))
+        for key in self.gpgkeys:
+            write('gpgkey %s' % key)
         fd.write(os.linesep)
 
 
@@ -536,6 +539,10 @@ class IrcUserCreator(Creator):
     def capability(self, rest, lineno):
         self._checkId()
         self.u.capabilities.add(rest)
+
+    def gpgkey(self, rest, lineno):
+        self._checkId()
+        self.u.gpgkeys.append(rest)
 
     def finish(self):
         if self.u.name:
@@ -1001,7 +1008,7 @@ def checkIgnored(hostmask, recipient='', users=users, channels=channels):
             # Owners shouldn't ever be ignored.
             return False
         elif user.ignore:
-            log.debug('Ignoring %s due to his IrcUser ignore flag.', hostmask)
+            log.debug('Ignoring %s due to their IrcUser ignore flag.', hostmask)
             return True
     except KeyError:
         # If there's no user...
@@ -1130,7 +1137,7 @@ conf.registerGlobalValue(conf.supybot, 'capabilities',
 conf.registerGlobalValue(conf.supybot.capabilities, 'default',
     registry.Boolean(True, """Determines whether the bot by default will allow
     users to have a capability.  If this is disabled, a user must explicitly
-    have the capability for whatever command he wishes to run."""))
+    have the capability for whatever command they wish to run."""))
 conf.registerGlobalValue(conf.supybot.capabilities, 'private',
     registry.SpaceSeparatedListOfStrings([], """Determines what capabilities
     the bot will never tell to a non-admin whether or not a user has them."""))

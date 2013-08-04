@@ -41,10 +41,7 @@ import supybot.callbacks as callbacks
 from supybot.i18n import PluginInternationalization, internationalizeDocstring
 _ = PluginInternationalization('Karma')
 
-try:
-    import sqlite3
-except ImportError:
-    from pysqlite2 import dbapi2 as sqlite3 # for python2.4
+import sqlite3
 
 class SqliteKarmaDB(object):
     def __init__(self, filename):
@@ -188,7 +185,7 @@ class SqliteKarmaDB(object):
 
     def dump(self, channel, filename):
         filename = conf.supybot.directories.data.dirize(filename)
-        fd = utils.transactionalFile(filename)
+        fd = utils.file.AtomicFile(filename)
         out = csv.writer(fd)
         db = self._getDb(channel)
         cursor = db.cursor()
@@ -232,9 +229,10 @@ class Karma(callbacks.Plugin):
             thing = thing[1:-1]
         return thing
 
-    def _respond(self, irc, channel):
+    def _respond(self, irc, channel, thing, karma):
         if self.registryValue('response', channel):
-            irc.replySuccess()
+            irc.reply(_('%(thing)s\'s karma is now %(karma)i') %
+                    {'thing': thing, 'karma': karma})
         else:
             irc.noReply()
 
@@ -247,7 +245,8 @@ class Karma(callbacks.Plugin):
                 irc.error(_('You\'re not allowed to adjust your own karma.'))
             elif thing:
                 self.db.increment(channel, self._normalizeThing(thing))
-                self._respond(irc, channel)
+                karma = self.db.get(channel, self._normalizeThing(thing))
+                self._respond(irc, channel, thing, karma[0]-karma[1])
         else:
             thing = thing[:-2]
             if ircutils.strEqual(thing, irc.msg.nick) and \
@@ -255,11 +254,12 @@ class Karma(callbacks.Plugin):
                 irc.error(_('You\'re not allowed to adjust your own karma.'))
             elif thing:
                 self.db.decrement(channel, self._normalizeThing(thing))
-                self._respond(irc, channel)
+                karma = self.db.get(channel, self._normalizeThing(thing))
+                self._respond(irc, channel, thing, karma[0]-karma[1])
 
     def invalidCommand(self, irc, msg, tokens):
         channel = msg.args[0]
-        if not irc.isChannel(channel):
+        if not irc.isChannel(channel) or not tokens:
             return
         if tokens[-1][-2:] in ('++', '--'):
             thing = ' '.join(tokens)

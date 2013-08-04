@@ -90,7 +90,7 @@ class NumSearchResults(registry.PositiveInteger):
     def setValue(self, v):
         if v > 8:
             self.error()
-        super(NumSearchResults, self).setValue(v)
+        super(self.__class__, self).setValue(v)
 
 class SafeSearch(registry.OnlySomeStrings):
     validStrings = ['active', 'moderate', 'off']
@@ -101,6 +101,9 @@ conf.registerGlobalValue(Google, 'referer',
     the Referer field of the search requests.  If this value is empty, a
     Referer will be generated in the following format:
     http://$server/$botName""")))
+conf.registerChannelValue(Google, 'baseUrl',
+    registry.String('google.com', _("""Determines the base URL used for
+    requests.""")))
 conf.registerChannelValue(Google, 'searchSnarfer',
     registry.Boolean(False, _("""Determines whether the search snarfer is
     enabled.  If so, messages (even unaddressed ones) beginning with the word

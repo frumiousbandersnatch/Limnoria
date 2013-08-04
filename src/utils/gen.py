@@ -43,14 +43,17 @@ from file import mktemp
 
 import crypt
 
+from supybot.i18n import PluginInternationalization
+_ = PluginInternationalization()
+
 def abbrev(strings, d=None):
     """Returns a dictionary mapping unambiguous abbreviations to full forms."""
     def eachSubstring(s):
         for i in xrange(1, len(s)+1):
             yield s[:i]
     if len(strings) != len(set(strings)):
-        raise ValueError, \
-              'strings given to utils.abbrev have duplicates: %r' % strings
+        raise ValueError(
+              'strings given to utils.abbrev have duplicates: %r' % strings)
     if d is None:
         d = {}
     for s in strings:
@@ -94,23 +97,23 @@ def timeElapsed(elapsed, short=False, leadingZeroes=False, years=True,
            hours or minutes or seconds, 'One flag must be True'
     if years:
         (yrs, elapsed) = (elapsed // 31536000, elapsed % 31536000)
-        Format('year', yrs)
+        Format(_('year'), yrs)
     if weeks:
         (wks, elapsed) = (elapsed // 604800, elapsed % 604800)
-        Format('week', wks)
+        Format(_('week'), wks)
     if days:
         (ds, elapsed) = (elapsed // 86400, elapsed % 86400)
-        Format('day', ds)
+        Format(_('day'), ds)
     if hours:
         (hrs, elapsed) = (elapsed // 3600, elapsed % 3600)
-        Format('hour', hrs)
+        Format(_('hour'), hrs)
     if minutes or seconds:
         (mins, secs) = (elapsed // 60, elapsed % 60)
         if leadingZeroes or mins:
-            Format('minute', mins)
+            Format(_('minute'), mins)
         if seconds:
             leadingZeroes = True
-            Format('second', secs)
+            Format(_('second'), secs)
     if not ret:
         raise ValueError, 'Time difference not great enough to be noted.'
     result = ''
@@ -119,7 +122,7 @@ def timeElapsed(elapsed, short=False, leadingZeroes=False, years=True,
     else:
         result = format('%L', ret)
     if before:
-        result += ' ago'
+        result = _('%s ago') % result
     return result
 
 def findBinaryInPath(s):
@@ -253,8 +256,7 @@ class InsensitivePreservingDict(collections.MutableMapping):
             self.update(dict)
 
     def __repr__(self):
-        return '%s(%s)' % (self.__class__.__name__,
-                           super(InsensitivePreservingDict, self).__repr__())
+        return '%s(%r)' % (self.__class__.__name__, self.data)
 
     def fromkeys(cls, keys, s=None, dict=None, key=None):
         d = cls(dict=dict, key=key)
