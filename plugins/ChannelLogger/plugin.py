@@ -29,7 +29,10 @@
 ###
 
 import os
+import sys
 import time
+if sys.version_info[0] < 3:
+    from io import open
 from cStringIO import StringIO
 
 import supybot.conf as conf
@@ -52,6 +55,7 @@ class FakeLog(object):
         return
 
 class ChannelLogger(callbacks.Plugin):
+    """This plugin allows the bot to log channel conversations to disk."""
     noIgnore = True
     def __init__(self, irc):
         self.__parent = super(ChannelLogger, self)
@@ -98,7 +102,7 @@ class ChannelLogger(callbacks.Plugin):
         for log in self._logs():
             try:
                 log.flush()
-            except ValueError, e:
+            except ValueError as e:
                 if e.args[0] != 'I/O operation on a closed file':
                     self.log.exception('Odd exception:')
 
@@ -132,7 +136,7 @@ class ChannelLogger(callbacks.Plugin):
             for (channel, log) in logs.items():
                 if self.registryValue('rotateLogs', channel):
                     name = self.getLogName(channel)
-                    if name != log.name:
+                    if name != os.path.basename(log.name):
                         log.close()
                         del logs[channel]
 
@@ -149,7 +153,7 @@ class ChannelLogger(callbacks.Plugin):
             try:
                 name = self.getLogName(channel)
                 logDir = self.getLogDir(irc, channel)
-                log = open(os.path.join(logDir, name), 'a')
+                log = open(os.path.join(logDir, name), encoding='utf-8', mode='a')
                 logs[channel] = log
                 return log
             except IOError:
@@ -159,8 +163,10 @@ class ChannelLogger(callbacks.Plugin):
     def timestamp(self, log):
         format = conf.supybot.log.timestampFormat()
         if format:
-            log.write(time.strftime(format))
-            log.write('  ')
+            string = time.strftime(format) + '  '
+            if sys.version_info[0] < 3:
+                string = string.decode('utf8', 'ignore')
+            log.write(string)
 
     def normalizeChannel(self, irc, channel):
         return ircutils.toLower(channel)
@@ -175,6 +181,8 @@ class ChannelLogger(callbacks.Plugin):
             self.timestamp(log)
         if self.registryValue('stripFormatting', channel):
             s = ircutils.stripFormatting(s)
+        if sys.version_info[0] < 3:
+            s = s.decode('utf8', 'ignore')
         log.write(s)
         if self.registryValue('flushImmediately'):
             log.flush()
@@ -190,10 +198,14 @@ class ChannelLogger(callbacks.Plugin):
                         ignoreOwner=True)
                 except KeyError:
                     logChannelMessages = True
+                nick = msg.nick or irc.nick
+                if msg.tagged('ChannelLogger__relayed'):
+                    (nick, text) = text.split(' ', 1)
+                    nick = nick[1:-1]
+                    msg.args = (recipients, text)
                 if (noLogPrefix and text.startswith(noLogPrefix)) or \
                         not logChannelMessages:
                     text = '-= THIS MESSAGE NOT LOGGED =-'
-                nick = msg.nick or irc.nick
                 if ircmsgs.isAction(msg):
                     self.doLog(irc, channel,
                                '* %s %s\n', nick, ircmsgs.unAction(msg))
@@ -209,7 +221,7 @@ class ChannelLogger(callbacks.Plugin):
     def doNick(self, irc, msg):
         oldNick = msg.nick
         newNick = msg.args[0]
-        for (channel, c) in irc.state.channels.iteritems():
+        for (channel, c) in irc.state.channels.items():
             if newNick in c.users:
                 self.doLog(irc, channel,
                            '*** %s is now known as %s\n', oldNick, newNick)
@@ -267,7 +279,9 @@ class ChannelLogger(callbacks.Plugin):
             reason = ""
         if not isinstance(irc, irclib.Irc):
             irc = irc.getRealIrc()
-        for (channel, chan) in self.lastStates[irc].channels.iteritems():
+        if irc not in self.lastStates:
+            return
+        for (channel, chan) in self.lastStates[irc].channels.items():
             if(self.registryValue('showJoinParts', channel)):
                 if msg.nick in chan.users:
                     self.doLog(irc, channel,
@@ -280,6 +294,8 @@ class ChannelLogger(callbacks.Plugin):
         if msg.command in ('PRIVMSG', 'NOTICE'):
             # Other messages should be sent back to us.
             m = ircmsgs.IrcMsg(msg=msg, prefix=irc.prefix)
+            if msg.tagged('relayedMsg'):
+                m.tag('ChannelLogger__relayed')
             self(irc, m)
         return msg
 

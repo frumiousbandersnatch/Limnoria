@@ -29,6 +29,7 @@
 ###
 
 import sys
+import fnmatch
 
 import supybot.conf as conf
 import supybot.ircdb as ircdb
@@ -42,6 +43,9 @@ from supybot.i18n import PluginInternationalization, internationalizeDocstring
 _ = PluginInternationalization('Channel')
 
 class Channel(callbacks.Plugin):
+    """This plugin provides various commands for channel management, such
+    as setting modes and channel-wide bans/ignores/capabilities. This is
+    a core Supybot plugin that should not be removed!"""
     def __init__(self, irc):
         self.__parent = super(Channel, self)
         self.__parent.__init__(irc)
@@ -279,7 +283,7 @@ class Channel(callbacks.Plugin):
             irc.error(_('I cowardly refuse to kick myself.'), Raise=True)
         if not reason:
             reason = msg.nick
-        kicklen = irc.state.supported.get('kicklen', sys.maxint)
+        kicklen = irc.state.supported.get('kicklen', sys.maxsize)
         if len(reason) > kicklen:
             irc.error(_('The reason you gave is longer than the allowed '
                       'length for a KICK reason on this server.'),
@@ -320,13 +324,11 @@ class Channel(callbacks.Plugin):
         """[<channel>] [--{exact,nick,user,host}] <nick> [<seconds>]
 
         If you have the #channel,op capability, this will ban <nick> for
-        as many seconds as you specify, or else (if you specify 0 seconds or
+        as many seconds as you specify, otherwise (if you specify 0 seconds or
         don't specify a number of seconds) it will ban the person indefinitely.
-        --exact bans only the exact hostmask; --nick bans just the nick;
-        --user bans just the user, and --host bans just the host.  You can
-        combine these options as you choose.
-        <channel> is only necessary if the message isn't sent in the channel
-        itself.
+        --exact can be used to specify an exact hostmask. You can combine the
+        exact, nick, user, and host options as you choose. <channel> is only
+        necessary if the message isn't sent in the channel itself.
         """
         self._ban(irc, msg, args,
                 channel, optlist, bannedNick, expiry, None, False)
@@ -401,14 +403,13 @@ class Channel(callbacks.Plugin):
                 self.log.warning('%s tried to ban %q, but both have %s',
                                  msg.prefix, bannedHostmask, capability)
                 irc.error(format(_('%s has %s too, you can\'t ban '
-                                 'him/her/it.'), bannedNick, capability))
+                                 'them.'), bannedNick, capability))
             else:
                 doBan()
         else:
             self.log.warning('%q attempted kban without %s',
                              msg.prefix, capability)
             irc.errorNoCapability(capability)
-            exact,nick,user,host
 
     @internationalizeDocstring
     def unban(self, irc, msg, args, channel, hostmask):
@@ -555,6 +556,13 @@ class Channel(callbacks.Plugin):
         list = wrap(list)
 
     class ban(callbacks.Commands):
+        def hostmask(self, irc, msg, args, channel, banmask):
+            """[<channel>] <banmask>
+
+            Bans the <banmask> from the <channel>."""
+            irc.queueMsg(ircmsgs.ban(channel, banmask))
+        hostmask = wrap(hostmask, ['op', ('haveHalfop+', _('ban someone')), 'text'])
+
         @internationalizeDocstring
         def add(self, irc, msg, args, channel, banmask, expires):
             """[<channel>] <nick|hostmask> [<expires>]
@@ -593,27 +601,35 @@ class Channel(callbacks.Plugin):
         remove = wrap(remove, ['op', 'hostmask'])
 
         @internationalizeDocstring
-        def list(self, irc, msg, args, channel):
-            """[<channel>]
+        def list(self, irc, msg, args, channel, mask):
+            """[<channel>] [<mask>]
 
             If you have the #channel,op capability, this will show you the
-            current persistent bans on the <channel>.
+            current persistent bans on the <channel> that match the given
+            mask, if any (returns all of them otherwise).
+            Note that you can use * as a wildcard on masks and \* to match
+            actual * in masks
             """
-            c = ircdb.channels.getChannel(channel)
-            if c.bans:
+            all_bans = ircdb.channels.getChannel(channel).bans
+            if mask:
+                mask = mask.replace(r'\*', '[*]')
+                filtered_bans = fnmatch.filter(all_bans, mask)
+            else:
+                filtered_bans = all_bans
+            if filtered_bans:
                 bans = []
-                for ban in c.bans:
-                    if c.bans[ban]:
+                for ban in filtered_bans:
+                    if all_bans[ban]:
                         bans.append(format(_('%q (expires %t)'),
-                                           ban, c.bans[ban]))
+                                           ban, all_bans[ban]))
                     else:
                         bans.append(format(_('%q (never expires)'),
-                                           ban, c.bans[ban]))
+                                           ban, all_bans[ban]))
                 irc.reply(format('%L', bans))
             else:
                 irc.reply(format(_('There are no persistent bans on %s.'),
                                  channel))
-        list = wrap(list, ['op'])
+        list = wrap(list, ['op', optional('somethingWithoutSpaces')])
 
     class ignore(callbacks.Commands):
         @internationalizeDocstring
@@ -667,7 +683,7 @@ class Channel(callbacks.Plugin):
                 irc.reply(s)
             else:
                 L = sorted(c.ignores)
-                irc.reply(utils.str.commaAndify(map(repr, L)))
+                irc.reply(utils.str.commaAndify(list(map(repr, L))))
         list = wrap(list, ['op'])
 
     class capability(callbacks.Commands):
@@ -808,7 +824,7 @@ class Channel(callbacks.Plugin):
                                      'called %s.'), plugin.name(), command)
         elif command:
             # findCallbackForCommand
-            if filter(None, irc.findCallbacksForArgs([command])):
+            if list(filter(None, irc.findCallbacksForArgs([command]))):
                 s = '-%s' % command
             else:
                 failMsg = format(_('No plugin or command named %s could be '
@@ -847,7 +863,7 @@ class Channel(callbacks.Plugin):
                                      'called %s.'), plugin.name(), command)
         elif command:
             # findCallbackForCommand
-            if filter(None, irc.findCallbacksForArgs([command])):
+            if list(filter(None, irc.findCallbacksForArgs([command]))):
                 s = '-%s' % command
             else:
                 failMsg = format(_('No plugin or command named %s could be '
@@ -881,8 +897,11 @@ class Channel(callbacks.Plugin):
         """
         # Make sure we don't elicit information about private channels to
         # people or channels that shouldn't know
+        capability = ircdb.makeChannelCapability(channel, 'op')
+        hostmask = irc.state.nickToHostmask(msg.nick)
         if 's' in irc.state.channels[channel].modes and \
             msg.args[0] != channel and \
+            not ircdb.checkCapability(hostmask, capability) and \
             (ircutils.isChannel(msg.args[0]) or \
              msg.nick not in irc.state.channels[channel].users):
             irc.error(_('You don\'t have access to that information.'),
@@ -909,6 +928,7 @@ class Channel(callbacks.Plugin):
             hostmask = irc.state.nickToHostmask(nick)
             if ircdb.checkCapability(hostmask, capability):
                 irc.reply(s, to=nick, private=True)
+        irc.replySuccess()
 
     @internationalizeDocstring
     def alert(self, irc, msg, args, channel, text):

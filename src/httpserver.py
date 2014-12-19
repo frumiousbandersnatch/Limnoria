@@ -55,10 +55,10 @@ class RequestNotHandled(Exception):
 
 DEFAULT_TEMPLATES = {
     'index.html': """\
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml">
- <head>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
   <title>""" + _('Supybot Web server index') + """</title>
   <link rel="stylesheet" type="text/css" href="/default.css" media="screen" />
  </head>
@@ -71,10 +71,10 @@ DEFAULT_TEMPLATES = {
  </body>
 </html>""",
     'generic/error.html': """\
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml">
+<!DOCTYPE html>
+<html>
  <head>
+  <meta charset="UTF-8" />
   <title>%(title)s</title>
   <link rel="stylesheet" href="/default.css" />
  </head>
@@ -157,10 +157,12 @@ set_default_templates(DEFAULT_TEMPLATES)
 def get_template(filename):
     path = conf.supybot.directories.data.web.dirize(filename)
     if os.path.isfile(path):
-        return open(path, 'r').read()
+        with open(path, 'r') as fd:
+            return fd.read()
     else:
         assert os.path.isfile(path + '.example'), path + '.example'
-        return open(path + '.example', 'r').read()
+        with open(path + '.example', 'r') as fd:
+            return fd.read()
 
 class RealSupyHTTPServer(HTTPServer):
     # TODO: make this configurable
@@ -184,6 +186,7 @@ class RealSupyHTTPServer(HTTPServer):
                     'reloaded the plugin and it didn\'t properly unhook. '
                     'Forced unhook.') % subdir)
         self.callbacks[subdir] = callback
+        callback.doHook(self, subdir)
     def unhook(self, subdir):
         callback = self.callbacks.pop(subdir) # May raise a KeyError. We don't care.
         callback.doUnhook(self)
@@ -239,12 +242,15 @@ class SupyHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         if 'Content-Type' not in self.headers:
             self.headers['Content-Type'] = 'application/x-www-form-urlencoded'
-        form = cgi.FieldStorage(
-            fp=self.rfile,
-            headers=self.headers,
-            environ={'REQUEST_METHOD':'POST',
-                     'CONTENT_TYPE':self.headers['Content-Type'],
-                     })
+        if self.headers['Content-Type'] == 'application/x-www-form-urlencoded':
+            form = cgi.FieldStorage(
+                fp=self.rfile,
+                headers=self.headers,
+                environ={'REQUEST_METHOD':'POST',
+                         'CONTENT_TYPE':self.headers['Content-Type'],
+                         })
+        else:
+            form = self.rfile.read()
         self.do_X('doPost', form=form)
 
     def do_HEAD(self):
@@ -274,6 +280,15 @@ class SupyHTTPServerCallback(object):
     message, it probably means you are developing a plugin, and you have
     neither overriden this message or defined an handler for this query.""")
 
+    if sys.version_info[0] >= 3:
+        def write(self, b):
+            if isinstance(b, str):
+                b = b.encode()
+            self.wfile.write(b)
+    else:
+        def write(self, s):
+            self.wfile.write(s)
+
     def doGet(self, handler, path, *args, **kwargs):
         handler.send_response(400)
         self.send_header('Content-Type', 'text/plain; charset=utf-8; charset=utf-8')
@@ -283,6 +298,9 @@ class SupyHTTPServerCallback(object):
 
     doPost = doHead = doGet
 
+    def doHook(self, handler, subdir):
+        """Method called when hooking this callback."""
+        pass
     def doUnhook(self, handler):
         """Method called when unhooking this callback."""
         pass
@@ -352,16 +370,18 @@ class Favicon(SupyHTTPServerCallback):
     name = 'favicon'
     defaultResponse = _('Request not handled')
     def doGet(self, handler, path):
+        response = None
         file_path = conf.supybot.servers.http.favicon()
         found = False
         if file_path:
             try:
-                icon = open(file_path, 'r')
-                found = True
+                icon = open(file_path, 'rb')
+                response = icon.read()
             except IOError:
                 pass
-        if found:
-            response = icon.read()
+            finally:
+                icon.close()
+        if response is not None:
             filename = file_path.rsplit(os.sep, 1)[1]
             if '.' in filename:
                 ext = filename.rsplit('.', 1)[1]

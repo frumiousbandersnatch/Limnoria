@@ -65,11 +65,11 @@ class TopicTestCase(ChannelPluginTestCase):
         m = self.getMsg('topic add foo')
         self.assertEqual(m.command, 'TOPIC')
         self.assertEqual(m.args[0], self.channel)
-        self.assertEqual(m.args[1], 'foo (test)')
+        self.assertEqual(m.args[1], 'foo')
         m = self.getMsg('topic add bar')
         self.assertEqual(m.command, 'TOPIC')
         self.assertEqual(m.args[0], self.channel)
-        self.assertEqual(m.args[1], 'foo (test) || bar (test)')
+        self.assertEqual(m.args[1], 'foo | bar')
 
     def testManageCapabilities(self):
         try:
@@ -93,9 +93,9 @@ class TopicTestCase(ChannelPluginTestCase):
 
     def testInsert(self):
         m = self.getMsg('topic add foo')
-        self.assertEqual(m.args[1], 'foo (test)')
+        self.assertEqual(m.args[1], 'foo')
         m = self.getMsg('topic insert bar')
-        self.assertEqual(m.args[1], 'bar (test) || foo (test)')
+        self.assertEqual(m.args[1], 'bar | foo')
 
     def testChange(self):
         _ = self.getMsg('topic add foo')
@@ -143,9 +143,9 @@ class TopicTestCase(ChannelPluginTestCase):
         _ = self.getMsg('topic add foo')
         self.assertRegexp('topic list', '1: foo')
         _ = self.getMsg('topic add bar')
-        self.assertRegexp('topic list', '1: foo .*2: bar')
+        self.assertRegexp('topic list', '1: foo.*2: bar')
         _ = self.getMsg('topic add baz')
-        self.assertRegexp('topic list', '1: foo .* 2: bar .* and 3: baz')
+        self.assertRegexp('topic list', '1: foo.* 2: bar.* and 3: baz')
 
     def testSet(self):
         _ = self.getMsg('topic add foo')
@@ -162,15 +162,29 @@ class TopicTestCase(ChannelPluginTestCase):
         finally:
             conf.supybot.plugins.Topic.format.setValue(orig)
 
+    def testRestore(self):
+        self.getMsg('topic set foo')
+        self.assertResponse('topic restore', 'foo')
+        self.getMsg('topic remove 1')
+        restoreError = 'Error: I haven\'t yet set the topic in #test.'
+        self.assertResponse('topic restore', restoreError)
+
+    def testRefresh(self):
+        self.getMsg('topic set foo')
+        self.assertResponse('topic refresh', 'foo')
+        self.getMsg('topic remove 1')
+        refreshError = 'Error: I haven\'t yet set the topic in #test.'
+        self.assertResponse('topic refresh', refreshError)
+
     def testUndo(self):
         try:
             original = conf.supybot.plugins.Topic.format()
             conf.supybot.plugins.Topic.format.setValue('$topic')
             self.assertResponse('topic set ""', '')
             self.assertResponse('topic add foo', 'foo')
-            self.assertResponse('topic add bar', 'foo || bar')
-            self.assertResponse('topic add baz', 'foo || bar || baz')
-            self.assertResponse('topic undo', 'foo || bar')
+            self.assertResponse('topic add bar', 'foo | bar')
+            self.assertResponse('topic add baz', 'foo | bar | baz')
+            self.assertResponse('topic undo', 'foo | bar')
             self.assertResponse('topic undo', 'foo')
             self.assertResponse('topic undo', '')
         finally:
@@ -182,19 +196,19 @@ class TopicTestCase(ChannelPluginTestCase):
             conf.supybot.plugins.Topic.format.setValue('$topic')
             self.assertResponse('topic set ""', '')
             self.assertResponse('topic add foo', 'foo')
-            self.assertResponse('topic add bar', 'foo || bar')
-            self.assertResponse('topic add baz', 'foo || bar || baz')
-            self.assertResponse('topic undo', 'foo || bar')
+            self.assertResponse('topic add bar', 'foo | bar')
+            self.assertResponse('topic add baz', 'foo | bar | baz')
+            self.assertResponse('topic undo', 'foo | bar')
             self.assertResponse('topic undo', 'foo')
             self.assertResponse('topic undo', '')
             self.assertResponse('topic redo', 'foo')
-            self.assertResponse('topic redo', 'foo || bar')
-            self.assertResponse('topic redo', 'foo || bar || baz')
-            self.assertResponse('topic undo', 'foo || bar')
+            self.assertResponse('topic redo', 'foo | bar')
+            self.assertResponse('topic redo', 'foo | bar | baz')
+            self.assertResponse('topic undo', 'foo | bar')
             self.assertResponse('topic undo', 'foo')
-            self.assertResponse('topic redo', 'foo || bar')
+            self.assertResponse('topic redo', 'foo | bar')
             self.assertResponse('topic undo', 'foo')
-            self.assertResponse('topic redo', 'foo || bar')
+            self.assertResponse('topic redo', 'foo | bar')
         finally:
             conf.supybot.plugins.Topic.format.setValue(original)
 
@@ -204,10 +218,10 @@ class TopicTestCase(ChannelPluginTestCase):
             conf.supybot.plugins.Topic.format.setValue('$topic')
             self.assertResponse('topic set ""', '')
             self.assertResponse('topic add foo', 'foo')
-            self.assertResponse('topic add bar', 'foo || bar')
-            self.assertResponse('topic add baz', 'foo || bar || baz')
-            self.assertResponse('topic swap 1 2', 'bar || foo || baz')
-            self.assertResponse('topic swap 1 -1', 'baz || foo || bar')
+            self.assertResponse('topic add bar', 'foo | bar')
+            self.assertResponse('topic add baz', 'foo | bar | baz')
+            self.assertResponse('topic swap 1 2', 'bar | foo | baz')
+            self.assertResponse('topic swap 1 -1', 'baz | foo | bar')
             self.assertError('topic swap -1 -1')
             self.assertError('topic swap 2 -2')
             self.assertError('topic swap 1 -3')
@@ -225,14 +239,15 @@ class TopicTestCase(ChannelPluginTestCase):
         finally:
             conf.supybot.plugins.Topic.default.setValue(original)
 
+
     def testTopic(self):
         original = conf.supybot.plugins.Topic.format()
         try:
             conf.supybot.plugins.Topic.format.setValue('$topic')
             self.assertError('topic addd') # Error to send too many args.
             self.assertResponse('topic add foo', 'foo')
-            self.assertResponse('topic add bar', 'foo || bar')
-            self.assertResponse('topic', 'foo || bar')
+            self.assertResponse('topic add bar', 'foo | bar')
+            self.assertResponse('topic', 'foo | bar')
         finally:
             conf.supybot.plugins.Topic.format.setValue(original)
 
@@ -241,11 +256,12 @@ class TopicTestCase(ChannelPluginTestCase):
         try:
             conf.supybot.plugins.Topic.format.setValue('$topic')
             self.assertResponse('topic add foo', 'foo')
-            self.assertResponse('topic add bar', 'foo || bar')
-            self.assertResponse('topic add baz', 'foo || bar || baz')
-            self.assertResponse('topic separator |', 'foo | bar | baz')
+            self.assertResponse('topic add bar', 'foo | bar')
+            self.assertResponse('topic add baz', 'foo | bar | baz')
             self.assertResponse('topic separator ::', 'foo :: bar :: baz')
             self.assertResponse('topic separator ||', 'foo || bar || baz')
+            self.assertResponse('topic separator |', 'foo | bar | baz')
+
         finally:
             conf.supybot.plugins.Topic.format.setValue(original)
 
@@ -255,9 +271,9 @@ class TopicTestCase(ChannelPluginTestCase):
             conf.supybot.plugins.Topic.format.setValue('$topic')
             self.irc.state.supported['TOPICLEN'] = 20
             self.assertResponse('topic fit foo', 'foo')
-            self.assertResponse('topic fit bar', 'foo || bar')
-            self.assertResponse('topic fit baz', 'foo || bar || baz')
-            self.assertResponse('topic fit qux', 'bar || baz || qux')
+            self.assertResponse('topic fit bar', 'foo | bar')
+            self.assertResponse('topic fit baz', 'foo | bar | baz')
+            self.assertResponse('topic fit qux', 'bar | baz | qux')
         finally:
             conf.supybot.plugins.Topic.format.setValue(original)
             self.irc.state.supported.pop('TOPICLEN', None)

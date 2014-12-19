@@ -38,7 +38,6 @@ import supybot.plugins as plugins
 
 import gc
 import os
-import pwd
 import sys
 try:
     import exceptions
@@ -47,7 +46,7 @@ except ImportError: # Python 3
     class exceptions:
         """Pseudo-module"""
         pass
-    for (key, value) in exceptions.__dict__.items():
+    for (key, value) in list(exceptions.__dict__.items()):
         if isinstance(value, type) and issubclass(value, Exception):
             exceptions[key] = value
 
@@ -62,10 +61,12 @@ def getTracer(fd):
     def tracer(frame, event, _):
         if event == 'call':
             code = frame.f_code
-            print >>fd, '%s: %s' % (code.co_filename, code.co_name)
+            fd.write('%s: %s\n' % (code.co_filename, code.co_name))
     return tracer
 
 class Debug(callbacks.Privmsg):
+    """This plugin provides debugging abilities for Supybot. It
+    should not be loaded with a default installation."""
     capability = 'owner'
     def __init__(self, irc):
         # Setup exec command.
@@ -98,7 +99,7 @@ class Debug(callbacks.Privmsg):
             self._evalEnv['__'] = self._evalEnv['_']
             self._evalEnv['_'] = x
             irc.reply(repr(x))
-        except SyntaxError, e:
+        except SyntaxError as e:
             irc.reply(format('%s: %q', utils.exnToString(e), s))
     eval = wrap(eval, ['text'])
 
@@ -107,7 +108,7 @@ class Debug(callbacks.Privmsg):
 
         Execs <code>.  Returns success if it didn't raise any exceptions.
         """
-        exec s
+        exec(s)
         irc.replySuccess()
     _exec = wrap(_exec, ['text'])
 
@@ -118,7 +119,7 @@ class Debug(callbacks.Privmsg):
         """
         try:
             irc.reply(repr(eval(text)))
-        except Exception, e:
+        except Exception as e:
             irc.reply(utils.exnToString(e))
     simpleeval = wrap(simpleeval, ['text'])
 
@@ -131,7 +132,7 @@ class Debug(callbacks.Privmsg):
             exn = __builtins__[name]
         else:
             exn = getattr(__builtins__, name)
-        raise exn, msg.prefix
+        raise exn(msg.prefix)
     exn = wrap(exn, ['text'])
 
     def sendquote(self, irc, msg, args, text):
@@ -150,7 +151,7 @@ class Debug(callbacks.Privmsg):
         given, sys.stdout is used.  This causes much output.
         """
         if filename:
-            fd = file(filename, 'a')
+            fd = open(filename, 'a')
         else:
             fd = sys.stdout
         sys.settrace(getTracer(fd))
@@ -184,24 +185,8 @@ class Debug(callbacks.Privmsg):
         while times:
             L.append(gc.collect())
             times -= 1
-        irc.reply(format('%L', map(str, L)))
+        irc.reply(format('%L', list(map(str, L))))
     collect = wrap(collect, [additional('positiveInt', 1)])
-
-    _progstats_endline_remover = utils.str.MultipleRemover('\r\n')
-    def progstats(self, irc, msg, args):
-        """takes no arguments
-
-        Returns various unix-y information on the running supybot process.
-        """
-        pw = pwd.getpwuid(os.getuid())
-        response = 'Process ID %s running as user "%s" and as group "%s" ' \
-                   'from directory "%s" with the command line "%s".  ' \
-                   'Running on Python %s.' % \
-                   (os.getpid(), pw[0], pw[3],
-                    os.getcwd(), ' '.join(sys.argv),
-                    self._progstats_endline_remover(sys.version))
-        irc.reply(response)
-    progstats = wrap(progstats)
 
     def environ(self, irc, msg, args):
         """takes no arguments
@@ -210,14 +195,6 @@ class Debug(callbacks.Privmsg):
         """
         irc.reply(repr(os.environ))
     environ = wrap(environ)
-
-    def clearq(self, irc, msg, args):
-        """takes no arguments
-
-        Clears the current send queue for this network.
-        """
-        irc.queue.reset()
-        irc.replySuccess()
 
 
 Class = Debug

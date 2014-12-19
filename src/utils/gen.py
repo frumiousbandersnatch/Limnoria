@@ -28,6 +28,8 @@
 # POSSIBILITY OF SUCH DAMAGE.
 ###
 
+from __future__ import print_function
+
 import os
 import sys
 import ast
@@ -36,12 +38,12 @@ import types
 import textwrap
 import traceback
 import collections
-from itertools import imap
 
-from str import format
-from file import mktemp
 
-import crypt
+from . import crypt
+from .str import format
+from .file import mktemp
+from .iter import imap
 
 from supybot.i18n import PluginInternationalization
 _ = PluginInternationalization()
@@ -115,7 +117,7 @@ def timeElapsed(elapsed, short=False, leadingZeroes=False, years=True,
             leadingZeroes = True
             Format(_('second'), secs)
     if not ret:
-        raise ValueError, 'Time difference not great enough to be noted.'
+        raise ValueError('Time difference not great enough to be noted.')
     result = ''
     if short:
         result = ' '.join(ret)
@@ -158,14 +160,14 @@ def safeEval(s, namespace={'True': True, 'False': False, 'None': None}):
     without unsafely using eval()."""
     try:
         node = ast.parse(s)
-    except SyntaxError, e:
-        raise ValueError, 'Invalid string: %s.' % e
+    except SyntaxError as e:
+        raise ValueError('Invalid string: %s.' % e)
     nodes = ast.parse(s).body
     if not nodes:
         if node.__class__ is ast.Module:
             return node.doc
         else:
-            raise ValueError, format('Unsafe string: %q', s)
+            raise ValueError(format('Unsafe string: %q', s))
     node = nodes[0]
     def checkNode(node):
         if node.__class__ is ast.Expr:
@@ -185,12 +187,15 @@ def safeEval(s, namespace={'True': True, 'False': False, 'None': None}):
                 return True
             else:
                 return False
+        elif sys.version_info[0:2] >= (3, 4) and \
+                node.__class__ is ast.NameConstant:
+            return True
         else:
             return False
     if checkNode(node):
         return eval(s, namespace, namespace)
     else:
-        raise ValueError, format('Unsafe string: %q', s)
+        raise ValueError(format('Unsafe string: %q', s))
 
 def exnToString(e):
     """Turns a simple exception instance into a string (better than str(e))"""
@@ -204,7 +209,11 @@ class IterableMap(object):
     """Define .iteritems() in a class and subclass this to get the other iters.
     """
     def iteritems(self):
-        raise NotImplementedError
+        if sys.version_info[0] >= 3 and hasattr(self, 'iteritems'):
+            # For old plugins
+            return getattr(self, 'iteritems')() # avoid 2to3
+        else:
+            raise NotImplementedError()
 
     def iterkeys(self):
         for (key, _) in self.iteritems():
@@ -235,10 +244,11 @@ class IterableMap(object):
             ret += 1
         return ret
 
-    def __nonzero__(self):
+    def __bool__(self):
         for _ in self.iteritems():
             return True
         return False
+    __nonzero__ = __bool__
 
 
 class InsensitivePreservingDict(collections.MutableMapping):
@@ -295,7 +305,7 @@ class InsensitivePreservingDict(collections.MutableMapping):
 
 class NormalizingSet(set):
     def __init__(self, iterable=()):
-        iterable = imap(self.normalize, iterable)
+        iterable = list(map(self.normalize, iterable))
         super(NormalizingSet, self).__init__(iterable)
 
     def normalize(self, x):
@@ -340,7 +350,7 @@ def callTracer(fd=None, basename=True):
             filename = code.co_filename
             if basename:
                 filename = os.path.basename(filename)
-            print >>fd, '%s: %s(%s)' % (filename, funcname, lineno)
+            print('%s: %s(%s)' % (filename, funcname, lineno), file=fd)
     return tracer
 
 # vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:

@@ -34,7 +34,7 @@ _ = PluginInternationalization('String')
 
 def configure(advanced):
     # This will be called by supybot to configure this module.  advanced is
-    # a bool that specifies whether the user identified himself as an advanced
+    # a bool that specifies whether the user identified themself as an advanced
     # user or not.  You should effect your configuration by manipulating the
     # registry as appropriate.
     from supybot.questions import expect, anything, something, yn
@@ -55,9 +55,9 @@ conf.registerGlobalValue(String.levenshtein, 'max',
 
 conf.registerGroup(String, 're')
 conf.registerGlobalValue(String.re, 'timeout',
-    registry.PositiveFloat(0.1, """Determines the maximum time, in seconds, that
+    registry.PositiveFloat(0.1, _("""Determines the maximum time, in seconds, that
     a regular expression is given to execute before being terminated. Since
     there is a possibility that user input for the re command can cause it to
     eat up large amounts of ram or cpu time, it's a good idea to keep this 
-    low. Most normal regexps should not take very long at all."""))
+    low. Most normal regexps should not take very long at all.""")))
 # vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:

@@ -35,9 +35,7 @@ import os
 import shutil
 import os.path
 
-import error
-import python
-import file as File
+from . import error, file as File, python
 
 # 'txn' is used as an abbreviation for 'transaction' in the following source.
 
@@ -55,6 +53,8 @@ class InProgress(error.Error):
         error.Error.__init__(self, msg, e)
         
 
+class InvalidCwd(Exception):
+    pass
 class TransactionMixin(python.Object):
     JOURNAL = 'journal'
     ORIGINALS = 'originals'
@@ -90,6 +90,7 @@ class TransactionMixin(python.Object):
             (command, rest) = line.split(None, 1)
             args = rest.split()
             yield (command, args)
+        journal.close()
         
 
 class Transaction(TransactionMixin):
@@ -108,7 +109,7 @@ class Transaction(TransactionMixin):
             raise FailedAcquisition(self.txnDir)
         try:
             os.rename(self.txnDir, self.dir)
-        except EnvironmentError, e:
+        except EnvironmentError as e:
             raise FailedAcquisition(self.txnDir, e)
         os.mkdir(self.dirize(self.ORIGINALS))
         os.mkdir(self.dirize(self.REPLACEMENTS))

@@ -34,7 +34,7 @@ _ = PluginInternationalization('Web')
 
 def configure(advanced):
     # This will be called by supybot to configure this module.  advanced is
-    # a bool that specifies whether the user identified himself as an advanced
+    # a bool that specifies whether the user identified themself as an advanced
     # user or not.  You should effect your configuration by manipulating the
     # registry as appropriate.
     from supybot.questions import expect, anything, something, yn
@@ -52,6 +52,10 @@ conf.registerChannelValue(Web, 'titleSnarfer',
 conf.registerChannelValue(Web, 'snarferReportIOExceptions',
     registry.Boolean(False, _("""Determines whether the bot will notfiy the user
     about network exceptions like hostnotfound, timeout ....""")))
+conf.registerChannelValue(Web, 'snarferShowTargetDomain',
+    registry.Boolean(False, _("""Determines whether the domain name displayed
+    by the snarfer will be the original one (posted on IRC) or the target one
+    (got after following redirects, if any).""")))
 conf.registerChannelValue(Web, 'nonSnarfingRegexp',
     registry.Regexp(None, _("""Determines what URLs matching the given regexp
     will not be snarfed.  Give the empty string if you have no URLs that you'd
@@ -70,5 +74,10 @@ conf.registerGroup(Web, 'fetch')
 conf.registerGlobalValue(Web.fetch, 'maximum',
     registry.NonNegativeInteger(0, _("""Determines the maximum number of
     bytes the bot will download via the 'fetch' command in this plugin.""")))
+
+conf.registerGlobalValue(Web.fetch, 'timeout',
+    registry.NonNegativeInteger(5, """Determines the maximum number of
+    seconds the bot will wait for the site to respond, when using the 'fetch'
+    command in this plugin. If 0, will use socket.defaulttimeout"""))
 
 # vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:

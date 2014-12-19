@@ -35,11 +35,12 @@ Simple utility functions related to strings.
 
 import re
 import sys
+import time
 import string
 import textwrap
 
-from iter import all, any
-from structures import TwoWayDictionary
+from .iter import all, any
+from .structures import TwoWayDictionary
 
 from supybot.i18n import PluginInternationalization
 _ = PluginInternationalization()
@@ -114,14 +115,17 @@ class MultipleRemover:
     def __call__(self, s):
         return self._matcher.sub(lambda m: '', s)
 
-_soundextrans = MultipleReplacer(dict(zip(string.ascii_uppercase,
-                                 '01230120022455012623010202')))
+_soundextrans = MultipleReplacer(dict(list(zip(string.ascii_uppercase,
+                                 '01230120022455012623010202'))))
 def soundex(s, length=4):
-    """Returns the soundex hash of a given string."""
+    """Returns the soundex hash of a given string.
+
+    length=0 doesn't truncate the hash.
+    """
     s = s.upper() # Make everything uppercase.
     s = ''.join([x for x in s if x in string.ascii_uppercase])
     if not s:
-        raise ValueError, 'Invalid string for soundex: %s'
+        raise ValueError('Invalid string for soundex: %s')
     firstChar = s[0] # Save the first character.
     s = _soundextrans(s) # Convert to soundex numbers.
     s = s.lstrip(s[0]) # Remove all repeated first characters.
@@ -129,9 +133,11 @@ def soundex(s, length=4):
     for c in s:
         if c != L[-1]:
             L.append(c)
-    L = [c for c in L if c != '0'] + (['0']*(length-1))
+    L = [c for c in L if c != '0']
     s = ''.join(L)
-    return length and s[:length] or s.rstrip('0')
+    if length:
+        s = s.ljust(length, '0')[:length]
+    return s
 
 def dqrepr(s):
     """Returns a repr() of s guaranteed to be in double quotes."""
@@ -150,7 +156,7 @@ _openers = '{[(<'
 _closers = '}])>'
 def _getSep(s, allowBraces=False):
     if len(s) < 2:
-        raise ValueError, 'string given to _getSep is too short: %r' % s
+        raise ValueError('string given to _getSep is too short: %r' % s)
     if allowBraces:
         braces = _closers
     else:
@@ -160,9 +166,8 @@ def _getSep(s, allowBraces=False):
     else:
         separator = s[0]
     if separator.isalnum() or separator in braces:
-        raise ValueError, \
-              'Invalid separator: separator must not be alphanumeric or in ' \
-              '"%s"' % braces
+        raise ValueError('Invalid separator: separator must not be alphanumeric or in ' \
+              '"%s"' % braces)
     return separator
 
 def perlReToPythonRe(s):
@@ -178,7 +183,7 @@ def perlReToPythonRe(s):
     try:
         (regexp, flags) = matcher.match(s).groups()
     except AttributeError: # Unpack list of wrong size.
-        raise ValueError, 'Must be of the form m/.../ or /.../'
+        raise ValueError('Must be of the form m/.../ or /.../')
     regexp = regexp.replace('\\'+opener, opener)
     if opener != closer:
         regexp = regexp.replace('\\'+closer, closer)
@@ -187,11 +192,11 @@ def perlReToPythonRe(s):
         for c in flags.upper():
             flag |= getattr(re, c)
     except AttributeError:
-        raise ValueError, 'Invalid flag: %s' % c
+        raise ValueError('Invalid flag: %s' % c)
     try:
         return re.compile(regexp, flag)
-    except re.error, e:
-        raise ValueError, str(e)
+    except re.error as e:
+        raise ValueError(str(e))
 
 def perlReToReplacer(s):
     """Converts a string representation of a Perl regular expression (i.e.,
@@ -205,7 +210,7 @@ def perlReToReplacer(s):
     try:
         (regexp, replace, flags) = matcher.match(s).groups()
     except AttributeError: # Unpack list of wrong size.
-        raise ValueError, 'Must be of the form s/.../.../'
+        raise ValueError('Must be of the form s/.../.../')
     regexp = regexp.replace('\x08', r'\b')
     replace = replace.replace('\\'+sep, sep)
     for i in xrange(10):
@@ -213,7 +218,7 @@ def perlReToReplacer(s):
     g = False
     if 'g' in flags:
         g = True
-        flags = filter('g'.__ne__, flags)
+        flags = list(filter('g'.__ne__, flags))
     if isinstance(flags, list):
         flags = ''.join(flags)
     r = perlReToPythonRe(sep.join(('', regexp, flags)))
@@ -409,7 +414,7 @@ def toBool(s):
     elif s in ('false', 'off', 'disable', 'disabled', '0'):
         return False
     else:
-        raise ValueError, 'Invalid string for toBool: %s' % quoted(s)
+        raise ValueError('Invalid string for toBool: %s' % quoted(s))
 
 # When used with Supybot, this is overriden when supybot.conf is loaded
 def timestamp(t):
@@ -417,7 +422,7 @@ def timestamp(t):
         t = time.time()
     return time.ctime(t)
 
-_formatRe = re.compile('%((?:\d+)?\.\d+f|[bfhiLnpqrsStuv%])')
+_formatRe = re.compile('%((?:\d+)?\.\d+f|[bfhiLnpqrsStTuv%])')
 def format(s, *args, **kwargs):
     """w00t.
 
@@ -434,10 +439,22 @@ def format(s, *args, **kwargs):
     n: nItems (takes a 2-tuple of (n, item) or a 3-tuple of (n, between, item))
     S: returns a human-readable size (takes an int)
     t: time, formatted (takes an int)
+    T: time delta, formatted (takes an int)
     u: url, wrapped in braces (this should be configurable at some point)
     v: void : takes one or many arguments, but doesn't display it
        (useful for translation)
     """
+    # Note to developers: If you want to add an argument type, do not forget
+    # to add the character to the _formatRe regexp or it will be ignored
+    # (and hard to debug if you don't know the trick).
+    # Of course, you should also document it in the docstring above.
+    if sys.version_info[0] < 3:
+        def pred(s):
+            if isinstance(s, unicode):
+                return s.encode('utf8')
+            else:
+                return s
+        args = map(pred, args)
     args = list(args)
     args.reverse() # For more efficient popping.
     def sub(match):
@@ -447,7 +464,7 @@ def format(s, *args, **kwargs):
             if isinstance(token, str):
                 return token
             elif sys.version_info[0] < 3 and isinstance(token, unicode):
-                return token.encode('utf8')
+                return token.encode('utf8', 'replace')
             else:
                 return str(token)
         elif char == 'i':
@@ -466,14 +483,12 @@ def format(s, *args, **kwargs):
                 return commaAndify(t)
             elif isinstance(t, tuple) and len(t) == 2:
                 if not isinstance(t[0], list):
-                    raise ValueError, \
-                          'Invalid list for %%L in format: %s' % t
+                    raise ValueError('Invalid list for %%L in format: %s' % t)
                 if not isinstance(t[1], basestring):
-                    raise ValueError, \
-                          'Invalid string for %%L in format: %s' % t
+                    raise ValueError('Invalid string for %%L in format: %s' % t)
                 return commaAndify(t[0], And=t[1])
             else:
-                raise ValueError, 'Invalid value for %%L in format: %s' % t
+                raise ValueError('Invalid value for %%L in format: %s' % t)
         elif char == 'p':
             return pluralize(args.pop())
         elif char == 'q':
@@ -483,17 +498,17 @@ def format(s, *args, **kwargs):
         elif char == 'n':
             t = args.pop()
             if not isinstance(t, (tuple, list)):
-                raise ValueError, 'Invalid value for %%n in format: %s' % t
+                raise ValueError('Invalid value for %%n in format: %s' % t)
             if len(t) == 2:
                 return nItems(*t)
             elif len(t) == 3:
                 return nItems(t[0], t[2], between=t[1])
             else:
-                raise ValueError, 'Invalid value for %%n in format: %s' % t
+                raise ValueError('Invalid value for %%n in format: %s' % t)
         elif char == 'S':
             t = args.pop()
             if not isinstance(t, (int, long)):
-                raise ValueError, 'Invalid value for %%S in format: %s' % t
+                raise ValueError('Invalid value for %%S in format: %s' % t)
             for suffix in ['B','KB','MB','GB','TB']:
                 if t < 1024:
                     return "%i%s" % (t, suffix)
@@ -501,19 +516,26 @@ def format(s, *args, **kwargs):
 
         elif char == 't':
             return timestamp(args.pop())
+        elif char == 'T':
+            from gen import timeElapsed
+            return timeElapsed(args.pop())
         elif char == 'u':
             import supybot.conf as conf
-            return conf.supybot.reply.format.url() % args.pop()
+            url = args.pop()
+            if url:
+                return conf.supybot.reply.format.url() % url
+            else:
+                return ''
         elif char == 'v':
             args.pop()
             return ''
         elif char == '%':
             return '%'
         else:
-            raise ValueError, 'Invalid char in sub (in format).'
+            raise ValueError('Invalid char in sub (in format).')
     try:
         return _formatRe.sub(sub, s)
     except IndexError:
-        raise ValueError, 'Extra format chars in format spec: %r' % s
+        raise ValueError('Extra format chars in format spec: %r' % s)
 
 # vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:

@@ -45,7 +45,7 @@ try:
 except AttributeError:
     pass
 
-from str import normalizeWhitespace
+from .str import normalizeWhitespace
 
 Request = urllib2.Request
 urlquote = urllib.quote
@@ -62,10 +62,11 @@ _ipAddr = r'%s(?:\.%s){3}' % (_octet, _octet)
 # Base domain regex off RFC 1034 and 1738
 _label = r'[0-9a-z][-0-9a-z]*[0-9a-z]?'
 _domain = r'%s(?:\.%s)*\.[0-9a-z][-0-9a-z]+' % (_label, _label)
-_urlRe = r'(\w+://(?:\S+@)?(?:%s|%s)(?::\d+)?(?:/[^\])>\s]*)?)' % (_domain, _ipAddr)
+_urlRe = r'(\w+://(?:\S+@)?(?:%s|%s)(?::\d+)?(?:/[^\])>\s]*)?)' % (_domain,
+                                                                   _ipAddr)
 urlRe = re.compile(_urlRe, re.I)
-_httpUrlRe = r'(https?://(?:\S+@)?(?:%s|%s)(?::\d+)?(?:/[^\])>\s]*)?)' % (_domain,
-                                                                 _ipAddr)
+_httpUrlRe = r'(https?://(?:\S+@)?(?:%s|%s)(?::\d+)?(?:/[^\])>\s]*)?)' % \
+             (_domain, _ipAddr)
 httpUrlRe = re.compile(_httpUrlRe, re.I)
 
 REFUSED = 'Connection refused.'
@@ -100,66 +101,60 @@ defaultHeaders = {
 # application-specific function.  Feel free to use a callable here.
 proxy = None
 
-def getUrlFd(url, headers=None, data=None):
-    """getUrlFd(url, headers=None, data=None)
+def getUrlFd(url, headers=None, data=None, timeout=None):
+    """getUrlFd(url, headers=None, data=None, timeout=None)
 
     Opens the given url and returns a file object.  Headers and data are
     a dict and string, respectively, as per urllib2.Request's arguments."""
     if headers is None:
         headers = defaultHeaders
+    if sys.version_info[0] >= 3 and isinstance(data, str):
+        data = data.encode()
     try:
         if not isinstance(url, urllib2.Request):
-            if '#' in url:
-                url = url[:url.index('#')]
-            if '@' in url:
-                scheme, url = url.split('://', 2)
-                auth, url = url.split('@')
-                url = scheme + '://' + url
+            (scheme, loc, path, query, frag) = urlparse.urlsplit(url)
+            (user, host) = urllib.splituser(loc)
+            url = urlparse.urlunsplit((scheme, host, path, query, ''))
             request = urllib2.Request(url, headers=headers, data=data)
-            if 'auth' in locals():
-                if sys.version_info[0] >= 3 and isinstance(auth, str):
-                    auth = auth.encode()
-                auth = base64.b64encode(auth)
-                if sys.version_info[0] >= 3:
-                    auth = auth.decode()
+            if user:
                 request.add_header('Authorization',
-                        'Basic ' + auth)
+                                   'Basic %s' % base64.b64encode(user))
         else:
             request = url
             request.add_data(data)
         httpProxy = force(proxy)
         if httpProxy:
             request.set_proxy(httpProxy, 'http')
-        fd = urllib2.urlopen(request)
+        fd = urllib2.urlopen(request, timeout=timeout)
         return fd
-    except socket.timeout, e:
-        raise Error, TIMED_OUT
-    except sockerrors, e:
-        raise Error, strError(e)
-    except httplib.InvalidURL, e:
-        raise Error, 'Invalid URL: %s' % e
-    except urllib2.HTTPError, e:
-        raise Error, strError(e)
-    except urllib2.URLError, e:
-        raise Error, strError(e.reason)
+    except socket.timeout as e:
+        raise Error(TIMED_OUT)
+    except sockerrors as e:
+        raise Error(strError(e))
+    except httplib.InvalidURL as e:
+        raise Error('Invalid URL: %s' % e)
+    except urllib2.HTTPError as e:
+        raise Error(strError(e))
+    except urllib2.URLError as e:
+        raise Error(strError(e.reason))
     # Raised when urllib doesn't recognize the url type
-    except ValueError, e:
-        raise Error, strError(e)
+    except ValueError as e:
+        raise Error(strError(e))
 
-def getUrl(url, size=None, headers=None, data=None):
-    """getUrl(url, size=None, headers=None, data=None)
+def getUrl(url, size=None, headers=None, data=None, timeout=None):
+    """getUrl(url, size=None, headers=None, data=None, timeout=None)
 
     Gets a page.  Returns a string that is the page gotten.  Size is an integer
     number of bytes to read from the URL.  Headers and data are dicts as per
     urllib2.Request's arguments."""
-    fd = getUrlFd(url, headers=headers, data=data)
+    fd = getUrlFd(url, headers=headers, data=data, timeout=timeout)
     try:
         if size is None:
             text = fd.read()
         else:
             text = fd.read(size)
-    except socket.timeout, e:
-        raise Error, TIMED_OUT
+    except socket.timeout as e:
+        raise Error(TIMED_OUT)
     fd.close()
     return text
 
@@ -206,7 +201,14 @@ class HtmlToText(HTMLParser, object):
         self.data.append(data)
 
     def handle_entityref(self, data):
-        self.data.append(unichr(htmlentitydefs.name2codepoint[data]))
+        if data in htmlentitydefs.name2codepoint:
+            self.data.append(unichr(htmlentitydefs.name2codepoint[data]))
+        elif sys.version_info[0] >= 3 and isinstance(data, bytes):
+            self.data.append(data.decode())
+        elif sys.version_info[0] < 3 and isinstance(data, str):
+            self.data.append(data.decode('utf8', errors='replace'))
+        else:
+            self.data.append(data)
 
     def getText(self):
         text = ''.join(self.data).strip()

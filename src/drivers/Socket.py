@@ -1,6 +1,6 @@
 ##
 # Copyright (c) 2002-2004, Jeremiah Fincher
-# Copyright (c) 2010, James McCoy
+# Copyright (c) 2010, 2013, James McCoy
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -34,18 +34,15 @@ Contains simple socket drivers.  Asyncore bugged (haha, pun!) me.
 
 from __future__ import division
 
+import os
 import sys
 import time
 import errno
 import select
 import socket
-import supybot.log as log
-import supybot.conf as conf
-import supybot.utils as utils
-import supybot.world as world
-import supybot.drivers as drivers
-import supybot.schedule as schedule
-from itertools import imap
+
+from .. import (conf, drivers, log, schedule, utils, world)
+from ..utils.iter import imap
 try:
     from charade.universaldetector import UniversalDetector
     charadeLoaded = True
@@ -54,6 +51,7 @@ except:
                       'cannot guess character encoding if'
                       'using Python3')
     charadeLoaded = False
+
 try:
     import ssl
     SSLError = ssl.SSLError
@@ -84,7 +82,7 @@ class SocketDriver(drivers.IrcDriver, drivers.ServersMixin):
         self.writeCheckTime = None
         self.nextReconnectTime = None
         self.resetDelay()
-        if self.networkGroup.get('ssl').value and not globals().has_key('ssl'):
+        if self.networkGroup.get('ssl').value and 'ssl' not in globals():
             drivers.log.error('The Socket driver can not connect to SSL '
                               'servers for your Python version.  Try the '
                               'Twisted driver instead, or install a Python'
@@ -126,12 +124,14 @@ class SocketDriver(drivers.IrcDriver, drivers.ServersMixin):
             self.eagains += 1
 
     def _sendIfMsgs(self):
+        if not self.connected:
+            return
         if not self.zombie:
             msgs = [self.irc.takeMsg()]
             while msgs[-1] is not None:
                 msgs.append(self.irc.takeMsg())
             del msgs[-1]
-            self.outbuffer += ''.join(imap(str, msgs))
+            self.outbuffer += ''.join(map(str, msgs))
         if self.outbuffer:
             try:
                 if sys.version_info[0] < 3:
@@ -140,7 +140,7 @@ class SocketDriver(drivers.IrcDriver, drivers.ServersMixin):
                     sent = self.conn.send(self.outbuffer.encode())
                 self.outbuffer = self.outbuffer[sent:]
                 self.eagains = 0
-            except socket.error, e:
+            except socket.error as e:
                 self._handleSocketError(e)
         if self.zombie and not self.outbuffer:
             self._reallyDie()
@@ -154,10 +154,13 @@ class SocketDriver(drivers.IrcDriver, drivers.ServersMixin):
             for inst in cls._instances:
                 # Do not use a list comprehension here, we have to edit the list
                 # and not to reassign it.
-                if (sys.version_info[0] == 3 and inst.conn._closed) or \
+                if not inst.connected or \
+                        (sys.version_info[0] == 3 and inst.conn._closed) or \
                         (sys.version_info[0] == 2 and
                             inst.conn._sock.__class__ is socket._closedsocket):
                     cls._instances.remove(inst)
+                elif inst.conn.fileno() == -1:
+                    inst.reconnect()
             if not cls._instances:
                 return
             rlist, wlist, xlist = select.select([x.conn for x in cls._instances],
@@ -226,26 +229,26 @@ class SocketDriver(drivers.IrcDriver, drivers.ServersMixin):
                             line = line.decode('utf8', 'replace')
 
                 msg = drivers.parseMsg(line)
-                if msg is not None:
+                if msg is not None and self.irc is not None:
                     self.irc.feedMsg(msg)
         except socket.timeout:
             pass
-        except SSLError, e:
+        except SSLError as e:
             if e.args[0] == 'The read operation timed out':
                 pass
             else:
                 self._handleSocketError(e)
                 return
-        except socket.error, e:
+        except socket.error as e:
             self._handleSocketError(e)
             return
-        if not self.irc.zombie:
+        if self.irc and not self.irc.zombie:
             self._sendIfMsgs()
 
     def connect(self, **kwargs):
         self.reconnect(reset=False, **kwargs)
 
-    def reconnect(self, reset=True):
+    def reconnect(self, wait=False, reset=True):
         self._attempt += 1
         self.nextReconnectTime = None
         if self.connected:
@@ -263,24 +266,36 @@ class SocketDriver(drivers.IrcDriver, drivers.ServersMixin):
             self.irc.reset()
         else:
             drivers.log.debug('Not resetting %s.', self.irc)
+        if wait:
+            self.scheduleReconnect()
+            return
         server = self._getNextServer()
-        address = utils.net.getAddressFromHostname(server[0],
-                attempt=self._attempt)
+        socks_proxy = getattr(conf.supybot.networks, self.irc.network) \
+                .socksproxy()
+        resolver = None
+        try:
+            if socks_proxy:
+                import socks
+        except ImportError:
+            log.error('Cannot use socks proxy (SocksiPy not installed), '
+                    'using direct connection instead.')
+            socks_proxy = ''
+        if socks_proxy:
+            address = server[0]
+        else:
+            try:
+                address = utils.net.getAddressFromHostname(server[0],
+                        attempt=self._attempt)
+            except (socket.gaierror, socket.error) as e:
+                drivers.log.connectError(self.currentServer, e)
+                self.scheduleReconnect()
+                return
+        port = server[1]
         drivers.log.connect(self.currentServer)
         try:
-            socks_proxy = getattr(conf.supybot.networks, self.irc.network) \
-                    .socksproxy()
-            try:
-                if socks_proxy:
-                    import socks
-            except ImportError:
-                log.error('Cannot use socks proxy (SocksiPy not installed), '
-                        'using direct connection instead.')
-                socks_proxy = ''
-            self.conn = utils.net.getSocket(address, socks_proxy)
-            vhost = conf.supybot.protocols.irc.vhost()
-            self.conn.bind((vhost, 0))
-        except socket.error, e:
+            self.conn = utils.net.getSocket(address, port=port,
+                    socks_proxy=socks_proxy)
+        except socket.error as e:
             drivers.log.connectError(self.currentServer, e)
             self.scheduleReconnect()
             return
@@ -289,8 +304,18 @@ class SocketDriver(drivers.IrcDriver, drivers.ServersMixin):
         self.conn.settimeout(max(10, conf.supybot.drivers.poll()*10))
         try:
             if getattr(conf.supybot.networks, self.irc.network).ssl():
-                assert globals().has_key('ssl')
-                self.conn = ssl.wrap_socket(self.conn)
+                assert 'ssl' in globals()
+                certfile = getattr(conf.supybot.networks, self.irc.network) \
+                        .certfile()
+                if not certfile:
+                    certfile = conf.supybot.protocols.irc.certfile()
+                if not certfile:
+                    certfile = None
+                elif not os.path.isfile(certfile):
+                    drivers.log.warning('Could not find cert file %s.' %
+                            certfile)
+                    certfile = None
+                self.conn = ssl.wrap_socket(self.conn, certfile=certfile)
             self.conn.connect((address, server[1]))
             def setTimeout():
                 self.conn.settimeout(conf.supybot.drivers.poll())
@@ -298,7 +323,7 @@ class SocketDriver(drivers.IrcDriver, drivers.ServersMixin):
             setTimeout()
             self.connected = True
             self.resetDelay()
-        except socket.error, e:
+        except socket.error as e:
             if e.args[0] == 115:
                 now = time.time()
                 when = now + 60

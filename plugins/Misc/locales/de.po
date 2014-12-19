@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: Supybot\n"
 "POT-Creation-Date: 2012-03-11 20:58+UTC\n"
 "PO-Revision-Date: 2012-04-27 15:40+0200\n"
-"Last-Translator: Mika Suomalainen <mika.henrik.mainio@hotmail.com>\n"
+"Last-Translator: Mikaela Suomalainen <mikaela.suomalainen@outlook.com>\n"
 "Language-Team: German <fbesser@gmail.com>\n"
 "Language: de\n"
 "MIME-Version: 1.0\n"
@@ -75,7 +75,7 @@ msgstr ""
 "Listet die Befehl auf die das gegebene Plugin anbietet. Falls kein Plugin angegeben wird, werden alle verfügbaren öffentliche Befehle aufgelistet. Falls --private angegeben wird, werden alle privaten Plugins aufgelistet."
 
 #: plugin.py:163
-msgid "--private and --unloaded are uncompatible options."
+msgid "--private and --unloaded are incompatible options."
 msgstr ""
 
 #: plugin.py:194

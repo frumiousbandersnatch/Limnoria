@@ -34,7 +34,7 @@ _ = PluginInternationalization('Herald')
 
 def configure(advanced):
     # This will be called by supybot to configure this module.  advanced is
-    # a bool that specifies whether the user identified himself as an advanced
+    # a bool that specifies whether the user identified themself as an advanced
     # user or not.  You should effect your configuration by manipulating the
     # registry as appropriate.
     from supybot.questions import expect, anything, something, yn
@@ -54,8 +54,8 @@ conf.registerChannelValue(Herald, 'throttle',
     between heralds.""")))
 conf.registerChannelValue(Herald.throttle, 'afterPart',
     registry.NonNegativeInteger(0, _("""Determines the minimum number of seconds
-    after parting that the bot will not herald the person when he or she
-    rejoins.""")))
+    after parting that the bot will not herald the person when they
+    rejoin.""")))
 conf.registerChannelValue(Herald.throttle, 'afterSplit',
     registry.NonNegativeInteger(60, _("""Determines the minimum number of seconds
     after a netsplit that the bot will not herald the users that split.""")))

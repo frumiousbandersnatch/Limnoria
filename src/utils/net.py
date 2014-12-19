@@ -1,6 +1,6 @@
 ###
 # Copyright (c) 2002-2005, Jeremiah Fincher
-# Copyright (c) 2011, James McCoy
+# Copyright (c) 2011, 2013, James McCoy
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -35,77 +35,50 @@ Simple utility modules.
 import re
 import socket
 
-class EmailRe:
-    """Fake class used for backward compatibility."""
+from .web import _ipAddr, _domain
 
-    rfc822_specials = '()<>@,;:\\"[]'
-    def match(self, addr):
-        # From http://www.secureprogramming.com/?action=view&feature=recipes&recipeid=1
+emailRe = re.compile(r"^(\w&.+-]+!)*[\w&.+-]+@(%s|%s)$" % (_domain, _ipAddr),
+                     re.I)
 
-        # First we validate the name portion (name@domain)
-        c = 0
-        while c < len(addr):
-            if addr[c] == '"' and (not c or addr[c - 1] == '.' or addr[c - 1] == '"'):
-                c = c + 1
-                while c < len(addr):
-                    if addr[c] == '"': break
-                    if addr[c] == '\\' and addr[c + 1] == ' ':
-                        c = c + 2
-                        continue
-                    if ord(addr[c]) < 32 or ord(addr[c]) >= 127: return 0
-                    c = c + 1
-                else: return 0
-                if addr[c] == '@': break
-                if addr[c] != '.': return 0
-                c = c + 1
-                continue
-            if addr[c] == '@': break
-            if ord(addr[c]) <= 32 or ord(addr[c]) >= 127: return 0
-            if addr[c] in self.rfc822_specials: return 0
-            c = c + 1
-        if not c or addr[c - 1] == '.': return 0
-
-        # Next we validate the domain portion (name@domain)
-        domain = c = c + 1
-        if domain >= len(addr): return 0
-        count = 0
-        while c < len(addr):
-            if addr[c] == '.':
-                if c == domain or addr[c - 1] == '.': return 0
-                count = count + 1
-            if ord(addr[c]) <= 32 or ord(addr[c]) >= 127: return 0
-            if addr[c] in self.rfc822_specials: return 0
-            c = c + 1
-
-        return count >= 1
-emailRe = EmailRe()
-
-def getAddressFromHostname(host, attempt=0):
-    addrinfo = socket.getaddrinfo(host, None)
+def getAddressFromHostname(host, port=None, attempt=0):
+    addrinfo = socket.getaddrinfo(host, port)
     addresses = []
     for (family, socktype, proto, canonname, sockaddr) in addrinfo:
         if sockaddr[0] not in addresses:
             addresses.append(sockaddr[0])
     return addresses[attempt % len(addresses)]
 
-def getSocket(host, socks_proxy=None):
+def getSocket(host, port=None, socks_proxy=None, vhost=None, vhostv6=None):
     """Returns a socket of the correct AF_INET type (v4 or v6) in order to
     communicate with host.
     """
-    addrinfo = socket.getaddrinfo(host, None)
-    host = addrinfo[0][4][0]
+    if not socks_proxy:
+        addrinfo = socket.getaddrinfo(host, port)
+        host = addrinfo[0][4][0]
     if socks_proxy:
         import socks
         s = socks.socksocket()
         hostname, port = socks_proxy.rsplit(':', 1)
-        s.setproxy(socks.PROXY_TYPE_SOCKS5, hostname, int(port))
+        s.setproxy(socks.PROXY_TYPE_SOCKS5, hostname, int(port),
+                rdns=True)
         return s
+    import supybot.conf as conf
     if isIPV4(host):
-        return socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        if not vhost:
+            vhost = conf.supybot.protocols.irc.vhost()
+        if vhost:
+            s.bind((vhost, 0))
+        return s
     elif isIPV6(host):
-        return socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        if not vhostv6:
+            vhostv6 = conf.supybot.protocols.irc.vhostv6()
+        if vhostv6:
+            s.bind((vhostv6, 0))
+        return s
     else:
-        raise socket.error, 'Something wonky happened.'
+        raise socket.error('Something wonky happened.')
 
 def isIP(s):
     """Returns whether or not a given string is an IP address.

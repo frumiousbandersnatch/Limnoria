@@ -43,6 +43,7 @@ from supybot.i18n import PluginInternationalization, internationalizeDocstring
 _ = PluginInternationalization('Relay')
 
 class Relay(callbacks.Plugin):
+    """This plugin allows you to setup a relay between networks."""
     noIgnore = True
     def __init__(self, irc):
         self.__parent = super(Relay, self)
@@ -99,9 +100,9 @@ class Relay(callbacks.Plugin):
         """[<channel>]
 
         Starts relaying between the channel <channel> on all networks.  If on a
-        network the bot isn't in <channel>, he'll join.  This commands is
-        required even if the bot is in the channel on both networks; he won't
-        relay between those channels unless he's told to join both
+        network the bot isn't in <channel>, it'll join.  This commands is
+        required even if the bot is in the channel on both networks; it won't
+        relay between those channels unless it's told to join both
         channels.  If <channel> is not given, starts relaying on the channel
         the message was sent in.
         """
@@ -171,8 +172,8 @@ class Relay(callbacks.Plugin):
                 utils.sortBy(ircutils.toLower, voices)
                 utils.sortBy(ircutils.toLower, halfops)
                 utils.sortBy(ircutils.toLower, usersS)
-                usersS = ', '.join(filter(None, map(', '.join,
-                                  (ops,halfops,voices,usersS))))
+                usersS = ', '.join(filter(None, list(map(', '.join,
+                                  (ops,halfops,voices,usersS)))))
                 users.append(format('%s (%i): %s',
                                     ircutils.bold(network), numUsers, usersS))
         users.sort()
@@ -222,7 +223,7 @@ class Relay(callbacks.Plugin):
             if ops:
                 L.append(format(_('is an op on %L'), ops))
             if halfops:
-                L.append(format(_('is a halfop on %L'), halfups))
+                L.append(format(_('is a halfop on %L'), halfops))
             if voices:
                 L.append(format(_('is voiced on %L'), voices))
             if normal:

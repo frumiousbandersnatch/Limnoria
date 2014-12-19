@@ -38,6 +38,7 @@ from supybot.i18n import PluginInternationalization, internationalizeDocstring
 _ = PluginInternationalization('Utilities')
 
 class Utilities(callbacks.Plugin):
+    """Provides useful commands for bot scripting / command nesting."""
     # Yes, I really do mean "requires no arguments" below.  "takes no
     # arguments" would probably lead people to think it was a useless command.
     @internationalizeDocstring
@@ -75,7 +76,7 @@ class Utilities(callbacks.Plugin):
         nested commands to run, but only the output of the last one to be
         returned.
         """
-        args = filter(None, args)
+        args = list(filter(None, args))
         if args:
             irc.reply(args[-1])
         else:
@@ -105,6 +106,17 @@ class Utilities(callbacks.Plugin):
     shuffle = wrap(shuffle, [many('anything')])
 
     @internationalizeDocstring
+    def sort(self, irc, msg, args, things):
+        """<arg> [<arg> ...]
+
+        Sorts the arguments given.
+        """
+        irc.reply(' '.join(map(str, sorted(things))))
+    # Keep ints as ints, floats as floats, without comparing between numbers
+    # and strings.
+    sort = wrap(sort, [first(many(first('int', 'float')), many('anything'))])
+
+    @internationalizeDocstring
     def sample(self, irc, msg, args, num, things):
         """<num> <arg> [<arg> ...]
 
@@ -113,7 +125,7 @@ class Utilities(callbacks.Plugin):
         try:
             samp = random.sample(things, num)
             irc.reply(' '.join(samp))
-        except ValueError, e:
+        except ValueError as e:
             irc.error('%s' % (e,))
     sample = wrap(sample, ['positiveInt', many('anything')])
 
@@ -135,11 +147,11 @@ class Utilities(callbacks.Plugin):
         args = [token and token or '""' for token in rest]
         text = ' '.join(args)
         commands = command.split()
-        commands = map(callbacks.canonicalName, commands)
+        commands = list(map(callbacks.canonicalName, commands))
         tokens = callbacks.tokenize(text)
         allTokens = commands + tokens
         self.Proxy(irc, msg, allTokens)
-    apply = wrap(apply, ['something', many('anything')])
+    apply = wrap(apply, ['something', many('something')])
 
 
 Class = Utilities

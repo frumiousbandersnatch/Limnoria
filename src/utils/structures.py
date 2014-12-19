@@ -34,14 +34,14 @@ Data structures for Python.
 import time
 import types
 import collections
-from itertools import imap
+
 
 class RingBuffer(object):
     """Class to represent a fixed-size ring buffer."""
     __slots__ = ('L', 'i', 'full', 'maxSize')
     def __init__(self, maxSize, seq=()):
         if maxSize <= 0:
-            raise ValueError, 'maxSize must be > 0.'
+            raise ValueError('maxSize must be > 0.')
         self.maxSize = maxSize
         self.reset()
         for elt in seq:
@@ -70,14 +70,15 @@ class RingBuffer(object):
            self.maxSize == other.maxSize and len(self) == len(other):
             iterator = iter(other)
             for elt in self:
-                otherelt = iterator.next()
+                otherelt = next(iterator)
                 if not elt == otherelt:
                     return False
             return True
         return False
 
-    def __nonzero__(self):
+    def __bool__(self):
         return len(self) > 0
+    __nonzero__ = __bool__
 
     def __contains__(self, elt):
         return elt in self.L
@@ -100,7 +101,7 @@ class RingBuffer(object):
     def __getitem__(self, idx):
         if self.full:
             oidx = idx
-            if type(oidx) == types.SliceType:
+            if isinstance(oidx, types.SliceType):
                 L = []
                 for i in xrange(*slice.indices(oidx, len(self))):
                     L.append(self[i])
@@ -108,11 +109,11 @@ class RingBuffer(object):
             else:
                 (m, idx) = divmod(oidx, len(self.L))
                 if m and m != -1:
-                    raise IndexError, oidx
+                    raise IndexError(oidx)
                 idx = (idx + self.i) % len(self.L)
                 return self.L[idx]
         else:
-            if type(idx) == types.SliceType:
+            if isinstance(idx, types.SliceType):
                 L = []
                 for i in xrange(*slice.indices(idx, len(self))):
                     L.append(self[i])
@@ -123,24 +124,24 @@ class RingBuffer(object):
     def __setitem__(self, idx, elt):
         if self.full:
             oidx = idx
-            if type(oidx) == types.SliceType:
+            if isinstance(oidx, types.SliceType):
                 range_ = xrange(*slice.indices(oidx, len(self)))
                 if len(range_) != len(elt):
-                    raise ValueError, 'seq must be the same length as slice.'
+                    raise ValueError('seq must be the same length as slice.')
                 else:
                     for (i, x) in zip(range_, elt):
                         self[i] = x
             else:
                 (m, idx) = divmod(oidx, len(self.L))
                 if m and m != -1:
-                    raise IndexError, oidx
+                    raise IndexError(oidx)
                 idx = (idx + self.i) % len(self.L)
                 self.L[idx] = elt
         else:
-            if type(idx) == types.SliceType:
+            if isinstance(idx, types.SliceType):
                 range_ = xrange(*slice.indices(idx, len(self)))
                 if len(range_) != len(elt):
-                    raise ValueError, 'seq must be the same length as slice.'
+                    raise ValueError('seq must be the same length as slice.')
                 else:
                     for (i, x) in zip(range_, elt):
                         self[i] = x
@@ -153,7 +154,8 @@ class RingBuffer(object):
     def __getstate__(self):
         return (self.maxSize, self.full, self.i, self.L)
 
-    def __setstate__(self, (maxSize, full, i, L)):
+    def __setstate__(self, state):
+        (maxSize, full, i, L) = state
         self.maxSize = maxSize
         self.full = full
         self.i = i
@@ -196,8 +198,9 @@ class queue(object):
     def __len__(self):
         return len(self.front) + len(self.back)
 
-    def __nonzero__(self):
+    def __bool__(self):
         return bool(self.back or self.front)
+    __nonzero__ = __bool__
 
     def __contains__(self, elt):
         return elt in self.front or elt in self.back
@@ -212,7 +215,7 @@ class queue(object):
         if len(self) == len(other):
             otheriter = iter(other)
             for elt in self:
-                otherelt = otheriter.next()
+                otherelt = next(otheriter)
                 if not (elt == otherelt):
                     return False
             return True
@@ -220,12 +223,12 @@ class queue(object):
             return False
 
     def __repr__(self):
-        return 'queue([%s])' % ', '.join(imap(repr, self))
+        return 'queue([%s])' % ', '.join(map(repr, self))
 
     def __getitem__(self, oidx):
         if len(self) == 0:
-            raise IndexError, 'queue index out of range'
-        if type(oidx) == types.SliceType:
+            raise IndexError('queue index out of range')
+        if isinstance(oidx, types.SliceType):
             L = []
             for i in xrange(*slice.indices(oidx, len(self))):
                 L.append(self[i])
@@ -233,7 +236,7 @@ class queue(object):
         else:
             (m, idx) = divmod(oidx, len(self))
             if m and m != -1:
-                raise IndexError, oidx
+                raise IndexError(oidx)
             if len(self.front) > idx:
                 return self.front[-(idx+1)]
             else:
@@ -241,36 +244,36 @@ class queue(object):
 
     def __setitem__(self, oidx, value):
         if len(self) == 0:
-            raise IndexError, 'queue index out of range'
-        if type(oidx) == types.SliceType:
+            raise IndexError('queue index out of range')
+        if isinstance(oidx, types.SliceType):
             range_ = xrange(*slice.indices(oidx, len(self)))
             if len(range_) != len(value):
-                raise ValueError, 'seq must be the same length as slice.'
+                raise ValueError('seq must be the same length as slice.')
             else:
                 for i in range_:
                     (m, idx) = divmod(oidx, len(self))
                     if m and m != -1:
-                        raise IndexError, oidx
+                        raise IndexError(oidx)
                 for (i, x) in zip(range_, value):
                     self[i] = x
         else:
             (m, idx) = divmod(oidx, len(self))
             if m and m != -1:
-                raise IndexError, oidx
+                raise IndexError(oidx)
             if len(self.front) > idx:
                 self.front[-(idx+1)] = value
             else:
                 self.back[idx-len(self.front)] = value
 
     def __delitem__(self, oidx):
-        if type(oidx) == types.SliceType:
+        if isinstance(oidx, types.SliceType):
             range_ = xrange(*slice.indices(oidx, len(self)))
             for i in range_:
                 del self[i]
         else:
             (m, idx) = divmod(oidx, len(self))
             if m and m != -1:
-                raise IndexError, oidx
+                raise IndexError(oidx)
             if len(self.front) > idx:
                 del self.front[-(idx+1)]
             else:
@@ -279,7 +282,8 @@ class queue(object):
     def __getstate__(self):
         return (list(self),)
 
-    def __setstate__(self, (L,)):
+    def __setstate__(self, state):
+        (L,) = state
         L.reverse()
         self.front = L
         self.back = []
@@ -296,7 +300,7 @@ class smallqueue(list):
         return self[0]
 
     def __repr__(self):
-        return 'smallqueue([%s])' % ', '.join(imap(repr, self))
+        return 'smallqueue([%s])' % ', '.join(map(repr, self))
 
     def reset(self):
         self[:] = []
@@ -363,7 +367,8 @@ class MaxLengthQueue(queue):
     def __getstate__(self):
         return (self.length, queue.__getstate__(self))
 
-    def __setstate__(self, (length, q)):
+    def __setstate__(self, state):
+        (length, q) = state
         self.length = length
         queue.__setstate__(self, q)
 
@@ -449,5 +454,42 @@ class CacheDict(collections.MutableMapping):
     def __len__(self):
         return len(self.d)
 
+class TruncatableSet(collections.MutableSet):
+    """A set that keeps track of the order of inserted elements so
+    the oldest can be removed."""
+    def __init__(self, iterable=[]):
+        self._ordered_items = list(iterable)
+        self._items = set(self._ordered_items)
+    def __repr__(self):
+        return 'TruncatableSet({%r})' % self._items
+    def __contains__(self, item):
+        return item in self._items
+    def __iter__(self):
+        return iter(self._items)
+    def __len__(self):
+        return len(self._items)
+    def add(self, item):
+        if item not in self._items:
+            self._items.add(item)
+            self._ordered_items.append(item)
+    def discard(self, item):
+        self._items.discard(item)
+        self._ordered_items.remove(item)
+    def truncate(self, size):
+        assert size >= 0
+        removed_size = len(self)-size
+        # I make two different cases depending on removed_size<size
+        # in order to make if faster if one is significantly bigger than the
+        # other.
+        if removed_size <= 0:
+            return
+        elif removed_size < size:
+            # If there are more kept items than removed items
+            for old_item in self._ordered_items[0:-size]:
+                self.discard(old_item)
+            self._ordered_items = self._ordered_items[-size:]
+        else:
+            self._ordered_items = self._ordered_items[-size:]
+            self._items = set(self._ordered_items)
 
 # vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:

@@ -34,7 +34,7 @@ _ = PluginInternationalization('Later')
 
 def configure(advanced):
     # This will be called by setup.py to configure this module.  Advanced is
-    # a bool that specifies whether the user identified himself as an advanced
+    # a bool that specifies whether the user identified themself as an advanced
     # user or not.  You should effect your configuration by manipulating the
     # registry as appropriate.
     from supybot.questions import expect, anything, something, yn
@@ -46,10 +46,10 @@ conf.registerGlobalValue(Later, 'maximum',
     messages to be queued for a user.  If this value is 0, there is no maximum.
     """)))
 conf.registerGlobalValue(Later, 'private',
-    registry.Boolean(True, _("""Determines whether users will be notified in
+    registry.Boolean(False, _("""Determines whether users will be notified in
     the first place in which they're seen, or in private.""")))
 conf.registerGlobalValue(Later, 'tellOnJoin',
-    registry.Boolean(True, _("""Determines whether users will be notified upon
+    registry.Boolean(False, _("""Determines whether users will be notified upon
     joining any channel the bot is in, or only upon sending a message.""")))
 conf.registerGlobalValue(Later, 'messageExpiry',
     registry.NonNegativeInteger(30, _("""Determines the maximum number of

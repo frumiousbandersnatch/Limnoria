@@ -70,6 +70,12 @@ class AkaChannelTestCase(ChannelPluginTestCase):
         self.assertNotError('aka add nonascii echo éé')
         self.assertRegexp('help nonascii', "Alias for .*echo éé")
 
+    def testShow(self):
+        self.assertNotError('aka add foo bar')
+        self.assertResponse('show foo', 'bar $*')
+        self.assertNotError('aka add "foo bar" baz')
+        self.assertResponse('show "foo bar"', 'baz $*')
+
     def testRemove(self):
         self.assertNotError('aka add foo echo bar')
         self.assertResponse('foo', 'bar')
@@ -87,15 +93,15 @@ class AkaChannelTestCase(ChannelPluginTestCase):
     def testAllArgs(self):
         self.assertNotError('aka add swap "echo $2 $1 $*"')
         self.assertResponse('swap 1 2 3 4 5', '2 1 3 4 5')
-        self.assertNotError('aka add foo "echo $1 @1 $*"')
-        self.assertResponse('foo bar baz qux', 'bar baz baz qux')
-        self.assertNotError('aka remove foo')
-        self.assertNotError('aka add foo "echo $* $2 $*"')
-        self.assertResponse('foo bar baz qux quux', 'qux quux baz qux quux')
+        self.assertError('aka add foo "echo $1 @1 $*"')
         self.assertNotError('aka add moo echo $1 $*')
         self.assertError('moo')
         self.assertResponse('moo foo', 'foo')
         self.assertResponse('moo foo bar', 'foo bar')
+
+        self.assertNotError('aka add spam "echo [echo $*]"')
+        self.assertResponse('spam egg', 'egg')
+        self.assertResponse('spam egg bacon', 'egg bacon')
     
     def testChannel(self):
         self.assertNotError('aka add channel echo $channel')
@@ -147,8 +153,22 @@ class AkaChannelTestCase(ChannelPluginTestCase):
         self.assertNotError('aka add "foo bar" "echo spam"')
         self.assertResponse('foo bar', 'spam')
         self.assertNotError('aka add "foo" "echo egg"')
-        self.assertResponse('foo bar', 'spam')
         self.assertResponse('foo', 'egg')
+        # You could expect 'spam' here, but in fact, this is dangerous.
+        # Just imagine this session:
+        # <evil_user> aka add "echo foo" quit
+        # <bot> The operation succeeded.
+        # ...
+        # <owner> echo foo
+        # * bot has quit
+        self.assertResponse('foo bar', 'egg')
+
+    def testNoOverride(self):
+        self.assertNotError('aka add "echo foo" "echo bar"')
+        self.assertResponse('echo foo', 'foo')
+        self.assertNotError('aka add foo "echo baz"')
+        self.assertNotError('aka add "foo bar" "echo qux"')
+        self.assertResponse('foo bar', 'baz')
 
     def testRecursivity(self):
         self.assertNotError('aka add fact '
@@ -157,8 +177,16 @@ class AkaChannelTestCase(ChannelPluginTestCase):
         self.assertResponse('fact 4', '24')
         self.assertRegexp('fact 50', 'more nesting')
 
+    def testDollarStarNesting(self):
+        self.assertNotError('aka add alias aka $*')
+        self.assertNotError('alias add a+ aka add $*')
+
 class AkaTestCase(PluginTestCase):
     plugins = ('Aka', 'Alias', 'User', 'Utilities')
+
+    def testMaximumLength(self):
+        self.assertNotError('aka add "foo bar baz qux quux" "echo test"')
+        self.assertError('aka add "foo bar baz qux quux corge" "echo test"')
 
     def testAkaLockedHelp(self):
         self.assertNotError('register evil_admin foo')
@@ -189,6 +217,7 @@ class AkaTestCase(PluginTestCase):
 
         self.assertNotError('alias add foo "echo test"')
         self.assertNotError('alias add spam "echo egg"')
+        self.assertNotError('alias lock spam')
 
         self.assertRegexp('aka importaliasdatabase',
             r'the 1 following command: foo \(This Aka already exists.\)$')
@@ -196,8 +225,6 @@ class AkaTestCase(PluginTestCase):
         self.assertResponse('alias foo', 'test')
         self.assertRegexp('alias spam', 'there is no command named')
         self.assertResponse('aka spam', 'egg')
-
-
 
 
 # vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:

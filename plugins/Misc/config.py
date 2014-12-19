@@ -34,7 +34,7 @@ _ = PluginInternationalization('Misc')
 
 def configure(advanced):
     # This will be called by supybot to configure this module.  advanced is
-    # a bool that specifies whether the user identified himself as an advanced
+    # a bool that specifies whether the user identified themself as an advanced
     # user or not.  You should effect your configuration by manipulating the
     # registry as appropriate.
     from supybot.questions import expect, anything, something, yn
@@ -45,12 +45,15 @@ conf.registerChannelValue(Misc, 'mores',
     registry.PositiveInteger(1, _("""Determines how many messages the bot
     will issue when using the 'more' command.""")))
 conf.registerGlobalValue(Misc, 'listPrivatePlugins',
-    registry.Boolean(True, _("""Determines whether the bot will list private
+    registry.Boolean(False, _("""Determines whether the bot will list private
     plugins with the list command if given the --private switch.  If this is
     disabled, non-owner users should be unable to see what private plugins
     are loaded.""")))
+conf.registerGlobalValue(Misc, 'customHelpString',
+    registry.String('', _("""Sets a custom help string, displayed when the 'help'
+    command is called without arguments.""")))
 conf.registerGlobalValue(Misc, 'listUnloadedPlugins',
-    registry.Boolean(True, _("""Determines whether the bot will list unloaded
+    registry.Boolean(False, _("""Determines whether the bot will list unloaded
     plugins with the list command if given the --unloaded switch.  If this is
     disabled, non-owner users should be unable to see what unloaded plugins
     are available.""")))

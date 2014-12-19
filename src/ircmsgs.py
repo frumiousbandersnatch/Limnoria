@@ -40,10 +40,8 @@ import sys
 import time
 import functools
 
-import supybot.conf as conf
-import supybot.utils as utils
-from supybot.utils.iter import all
-import supybot.ircutils as ircutils
+from . import conf, ircutils, utils
+from .utils.iter import all
 
 ###
 # IrcMsg class -- used for representing IRC messages acquired from a network.
@@ -74,8 +72,8 @@ class IrcMsg(object):
     Since this class isn't to be modified, the constructor also accepts a 'msg'
     keyword argument representing a message from which to take all the
     attributes not provided otherwise as keyword arguments.  So, for instance,
-    if a programmer wanted to take a PRIVMSG he'd gotten and simply redirect it
-    to a different source, they could do this:
+    if a programmer wanted to take a PRIVMSG they'd gotten and simply redirect
+    it to a different source, they could do this:
 
     IrcMsg(prefix='', args=(newSource, otherMsg.args[1]), msg=otherMsg)
     """
@@ -83,15 +81,17 @@ class IrcMsg(object):
     # data.  Goodbye, __slots__.
     # On second thought, let's use methods for tagging.
     __slots__ = ('args', 'command', 'host', 'nick', 'prefix', 'user',
-                 '_hash', '_str', '_repr', '_len', 'tags')
-    def __init__(self, s='', command='', args=(), prefix='', msg=None):
+                 '_hash', '_str', '_repr', '_len', 'tags', 'reply_env')
+    def __init__(self, s='', command='', args=(), prefix='', msg=None,
+            reply_env=None):
         assert not (msg and s), 'IrcMsg.__init__ cannot accept both s and msg'
         if not s and not command and not msg:
-            raise MalformedIrcMsg, 'IRC messages require a command.'
+            raise MalformedIrcMsg('IRC messages require a command.')
         self._str = None
         self._repr = None
         self._hash = None
         self._len = None
+        self.reply_env = reply_env
         self.tags = {}
         if s:
             originalString = s
@@ -111,7 +111,7 @@ class IrcMsg(object):
                     self.args = s.split()
                 self.command = self.args.pop(0)
             except (IndexError, ValueError):
-                raise MalformedIrcMsg, repr(originalString)
+                raise MalformedIrcMsg(repr(originalString))
         else:
             if msg is not None:
                 if prefix:
@@ -126,6 +126,12 @@ class IrcMsg(object):
                     self.args = args
                 else:
                     self.args = msg.args
+                if reply_env:
+                    self.reply_env = reply_env
+                elif msg.reply_env:
+                    self.reply_env = msg.reply_env.copy()
+                else:
+                    self.reply_env = None
                 self.tags = msg.tags.copy()
             else:
                 self.prefix = prefix
@@ -555,7 +561,7 @@ def kicks(channels, nicks, s='', prefix='', msg=None):
     if isinstance(channels, str): # Backward compatibility
         channels = [channels]
     if conf.supybot.protocols.irc.strictRfc():
-        assert areChannels(channels), repr(channel)
+        assert areChannels(channels), repr(channels)
         assert areNicks(nicks), repr(nicks)
     if msg and not prefix:
         prefix = msg.prefix
@@ -563,11 +569,13 @@ def kicks(channels, nicks, s='', prefix='', msg=None):
         s = s.encode('utf8')
     assert isinstance(s, str)
     if s:
-        return IrcMsg(prefix=prefix, command='KICK',
-                      args=(channel, ','.join(nicks), s), msg=msg)
+        for channel in channels:
+            return IrcMsg(prefix=prefix, command='KICK',
+                          args=(channel, ','.join(nicks), s), msg=msg)
     else:
-        return IrcMsg(prefix=prefix, command='KICK',
-                      args=(channel, ','.join(nicks)), msg=msg)
+        for channel in channels:
+            return IrcMsg(prefix=prefix, command='KICK',
+                          args=(channel, ','.join(nicks)), msg=msg)
 
 def privmsg(recipient, s, prefix='', msg=None):
     """Returns a PRIVMSG to recipient with the message msg."""
@@ -728,7 +736,7 @@ def user(ident, user, prefix='', msg=None):
     return IrcMsg(prefix=prefix, command='USER',
                   args=(ident, '0', '*', user), msg=msg)
 
-def who(hostmaskOrChannel, prefix='', msg=None):
+def who(hostmaskOrChannel, prefix='', msg=None, args=()):
     """Returns a WHO for the hostmask or channel hostmaskOrChannel."""
     if conf.supybot.protocols.irc.strictRfc():
         assert isChannel(hostmaskOrChannel) or \
@@ -736,7 +744,7 @@ def who(hostmaskOrChannel, prefix='', msg=None):
     if msg and not prefix:
         prefix = msg.prefix
     return IrcMsg(prefix=prefix, command='WHO',
-                  args=(hostmaskOrChannel,), msg=msg)
+                  args=(hostmaskOrChannel,) + args, msg=msg)
 
 def _whois(COMMAND, nick, mask='', prefix='', msg=None):
     """Returns a WHOIS for nick."""

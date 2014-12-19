@@ -51,16 +51,16 @@ _ = PluginInternationalization('Config')
 def getWrapper(name):
     parts = registry.split(name)
     if not parts or parts[0] not in ('supybot', 'users'):
-        raise InvalidRegistryName, name
+        raise registry.InvalidRegistryName(name)
     group = getattr(conf, parts.pop(0))
     while parts:
-        try:
-            group = group.get(parts.pop(0))
-        # We'll catch registry.InvalidRegistryName and re-raise it here so
-        # that we have a useful error message for the user.
-        except (registry.NonExistentRegistryEntry,
-                registry.InvalidRegistryName):
-            raise registry.InvalidRegistryName, name
+        part = parts.pop(0)
+        if group.__hasattr__(part):
+            group = group.get(part)
+        else:
+            # We'll raise registry.InvalidRegistryName here so
+            # that we have a useful error message for the user.
+            raise registry.InvalidRegistryName(name)
     return group
 
 def getCapability(name):
@@ -99,7 +99,7 @@ def getConfigVar(irc, msg, args, state):
         group = getWrapper(name)
         state.args.append(group)
         del args[0]
-    except registry.InvalidRegistryName, e:
+    except registry.InvalidRegistryName as e:
         state.errorInvalid(_('configuration variable'), str(e))
 addConverter('configVar', getConfigVar)
 
@@ -111,10 +111,12 @@ def getSettableConfigVar(irc, msg, args, state):
 addConverter('settableConfigVar', getSettableConfigVar)
 
 class Config(callbacks.Plugin):
+    """Provides access to the Supybot configuration. This is
+    a core Supybot plugin that should not be removed!"""
     def callCommand(self, command, irc, msg, *args, **kwargs):
         try:
             super(Config, self).callCommand(command, irc, msg, *args, **kwargs)
-        except registry.InvalidRegistryValue, e:
+        except registry.InvalidRegistryValue as e:
             irc.error(str(e))
 
     def _list(self, group):
@@ -239,7 +241,19 @@ class Config(callbacks.Plugin):
             s = group.help()
             if s:
                 if hasattr(group, 'value') and not group._private:
-                    s += _('  (Current value: %s)') % group
+                    channel = msg.args[0]
+                    if irc.isChannel(channel) and \
+                            channel in group._children:
+                        globvalue = str(group)
+                        chanvalue = str(group.get(channel))
+                        if chanvalue != globvalue:
+                            s += _('  (Current global value: %s;  '
+                                    'current channel value: %s)') % \
+                                            (globvalue, chanvalue)
+                        else:
+                            s += _('  (Current value: %s)') % group
+                    else:
+                        s += _('  (Current value: %s)') % group
                 irc.reply(s)
             else:
                 irc.reply(_('That configuration group exists, but seems to '

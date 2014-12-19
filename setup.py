@@ -32,6 +32,8 @@
 
 import os
 import sys
+import time
+import datetime
 import tempfile
 import subprocess
 
@@ -47,15 +49,25 @@ version = None
 try:
     proc = subprocess.Popen('git show HEAD --format=%ci', shell=True,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    version = proc.stdout.readline() \
-            .strip() \
-            .replace(' +', '+') \
-            .replace(' ', 'T')
+    date = proc.stdout.readline()
+    if sys.version_info[0] >= 3:
+        date = date.decode()
+        date = time.strptime(date.strip(), '%Y-%m-%d %H:%M:%S %z')
+        utc_date = time.gmtime(time.mktime(date))
+        version = time.strftime('%Y.%m.%d', utc_date)
+    else:
+        (date, timezone) = date.strip().rsplit(' ', 1)
+        date = datetime.datetime.strptime(date.strip(), '%Y-%m-%d %H:%M:%S')
+        offset = time.strptime(timezone[1:], '%H%M')
+        offset = datetime.timedelta(hours=offset.tm_hour,
+                                    minutes=offset.tm_min)
+        utc_date = date - offset
+        version = utc_date.strftime('%Y.%m.%d')
 except:
     pass
 if not version:
     from time import gmtime, strftime
-    version = 'installed on ' + strftime("%Y-%m-%dT%H:%M:%S+0000", gmtime())
+    version = 'installed on ' + strftime("%Y-%m-%dT%H-%M-%S", gmtime())
 try:
     os.unlink(os.path.join('src', 'version.py'))
 except OSError: # Does not exist
@@ -144,10 +156,17 @@ try:
                 def log_debug(self, msg, *args):
                     log.debug(msg, *args)
 
-            fixer_names = get_fixers_from_package('lib2to3.fixes')
-            fixer_names.remove('lib2to3.fixes.fix_import')
-            fixer_names += get_fixers_from_package('2to3')
-            r = DistutilsRefactoringTool(fixer_names, options=options)
+            fixer_names = ['fix_basestring',
+                    'fix_dict',
+                    'fix_imports',
+                    'fix_long',
+                    'fix_metaclass', 'fix_methodattrs',
+                    'fix_numliterals',
+                    'fix_types',
+                    'fix_unicode', 'fix_urllib', 'fix_xrange']
+            fixers = list(map(lambda x:'lib2to3.fixes.'+x, fixer_names))
+            fixers += get_fixers_from_package('2to3')
+            r = DistutilsRefactoringTool(fixers, options=options)
             r.refactor(files, write=True)
 except ImportError:
     # 2.x
@@ -173,24 +192,15 @@ packages = ['supybot',
             [
              'supybot.plugins.Dict.local',
              'supybot.plugins.Math.local',
-             'supybot.plugins.Google.local',
-             'supybot.plugins.RSS.local',
-             'supybot.plugins.Time.local',
-             'supybot.plugins.Time.local.dateutil',
             ]
 
 package_dir = {'supybot': 'src',
                'supybot.utils': 'src/utils',
+               'supybot.locales': 'locales',
                'supybot.plugins': 'plugins',
                'supybot.drivers': 'src/drivers',
-               'supybot.locales': 'locales',
-               'supybot.plugins.Google.local': 'plugins/Google/local',
                'supybot.plugins.Dict.local': 'plugins/Dict/local',
                'supybot.plugins.Math.local': 'plugins/Math/local',
-               'supybot.plugins.RSS.local': 'plugins/RSS/local',
-               'supybot.plugins.Time.local': 'plugins/Time/local',
-               'supybot.plugins.Time.local.dateutil':
-               'plugins/Time/local/dateutil',
               }
 
 package_data = {'supybot.locales': [s for s in os.listdir('locales/')]}
@@ -211,7 +221,8 @@ setup(
     url='https://github.com/ProgVal/Limnoria',
     author_email='progval+limnoria@progval.net',
     download_url='http://builds.progval.net/limnoria/',
-    description='A modified version of Supybot (an IRC bot)',
+    description='A modified version of Supybot (an IRC bot and framework)',
+    platforms=['linux', 'linux2', 'win32', 'cygwin', 'darwin'],
     long_description=normalizeWhitespace("""A robust, full-featured Python IRC
     bot with a clean and flexible plugin API.  Equipped with a complete ACL
     system for specifying user permissions with as much as per-command
@@ -226,10 +237,18 @@ setup(
         'License :: OSI Approved :: BSD License',
         'Topic :: Communications :: Chat :: Internet Relay Chat',
         'Natural Language :: English',
+        'Natural Language :: Finnish',
+        'Natural Language :: French',
+        'Natural Language :: Hungarian',
+        'Natural Language :: Italian',
         'Operating System :: OS Independent',
         'Operating System :: POSIX',
         'Operating System :: Microsoft :: Windows',
-        'Programming Language :: Python',
+        'Programming Language :: Python :: 2.6',
+        'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3.2',
+        'Programming Language :: Python :: 3.3',
+        'Programming Language :: Python :: 3.4',
         ],
     cmdclass = {'build_py': build_py},
 
@@ -255,7 +274,8 @@ setup(
                 ('share/man/man1', ['docs/man/supybot-adduser.1']),
                 ('share/man/man1', ['docs/man/supybot-plugin-doc.1']),
                 ('share/man/man1', ['docs/man/supybot-plugin-create.1']),
-        ]
+        ],
+
     )
 
 

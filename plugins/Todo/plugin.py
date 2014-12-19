@@ -119,6 +119,8 @@ class FlatTodoDb(object):
         db.set(tid, t)
 
 class Todo(callbacks.Plugin):
+    """This plugin allows you to create your own personal to-do list on
+    the bot."""
     def __init__(self, irc):
         self.__parent = super(Todo, self)
         self.__parent.__init__(irc)
@@ -238,9 +240,10 @@ class Todo(callbacks.Plugin):
         criteria = []
         for (option, arg) in optlist:
             if option == 'regexp':
-                criteria.append(lambda x: commands.regexp_wrapper(x, reobj=arg, 
-                        timeout=0.1, plugin_name = self.name(), fcn_name='search'))
-                criteria.append(arg.search)
+                criteria.append(lambda s:
+                                regexp_wrapper(s, reobj=arg, timeout=0.1,
+                                               plugin_name=self.name(),
+                                               fcn_name='search'))
         for glob in globs:
             glob = utils.python.glob2re(glob)
             criteria.append(re.compile(glob).search)

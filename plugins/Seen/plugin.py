@@ -1,6 +1,6 @@
 ###
 # Copyright (c) 2002-2004, Jeremiah Fincher
-# Copyright (c) 2010-2011, James McCoy
+# Copyright (c) 2010-2011, 2013, James McCoy
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -93,6 +93,8 @@ filename = conf.supybot.directories.data.dirize('Seen.db')
 anyfilename = conf.supybot.directories.data.dirize('Seen.any.db')
 
 class Seen(callbacks.Plugin):
+    """This plugin allows you to see when and what someone last said and
+    what you missed since you left a channel."""
     noIgnore = True
     def __init__(self, irc):
         self.__parent = super(Seen, self)
@@ -263,7 +265,7 @@ class Seen(callbacks.Plugin):
         else:
             self._last(irc, channel, any=True)
     any = wrap(any, ['channel', getopts({'user': 'otherUser'}),
-                     additional('nick')])
+                     additional('something')])
 
     def _last(self, irc, channel, any=False):
         if any:
@@ -327,9 +329,11 @@ class Seen(callbacks.Plugin):
 
     @internationalizeDocstring
     def since(self, irc, msg, args, channel,  nick):
-        """[<channel>] <nick>
+        """[<channel>] [<nick>]
 
         Returns the messages since <nick> last left the channel.
+        If <nick> is not given, it defaults to the nickname of the person
+        calling the command.
         """
         if nick is None:
             nick = msg.nick
@@ -361,13 +365,13 @@ class Seen(callbacks.Plugin):
                 break
         else: # I never use this; it only kicks in when the for loop exited normally.
             irc.error(format(_('I couldn\'t find in my history of %s messages '
-                             'where %r last left the %s'),
+                             'where %r last left %s'),
                              len(irc.state.history), nick, channel))
             return
         msgs = [m for m in irc.state.history[i:end]
                 if m.command == 'PRIVMSG' and ircutils.strEqual(m.args[0], channel)]
         if msgs:
-            irc.reply(format('%L', map(ircmsgs.prettyPrint, msgs)))
+            irc.reply(format('%L', list(map(ircmsgs.prettyPrint, msgs))))
         else:
             irc.reply(format(_('Either %s didn\'t leave, '
                              'or no messages were sent while %s was gone.'), nick, nick))

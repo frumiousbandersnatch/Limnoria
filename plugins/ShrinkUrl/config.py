@@ -42,7 +42,7 @@ def configure(advanced):
         conf.supybot.plugins.ShrinkUrl.shrinkSnarfer.setValue(True)
 
 class ShrinkService(registry.OnlySomeStrings):
-    """Valid values include 'ln', 'tiny', 'xrl', 'goo', and 'x0'."""
+    """Valid values include 'ln', 'tiny', 'xrl', 'goo', 'ur1', and 'x0'."""
     validStrings = ('ln', 'tiny', 'xrl', 'goo', 'ur1', 'x0')
 
 class ShrinkCycle(registry.SpaceSeparatedListOfStrings):
@@ -62,9 +62,8 @@ class ShrinkCycle(registry.SpaceSeparatedListOfStrings):
         if L:
             self.lastIndex = (self.lastIndex + 1) % len(L)
             return L[self.lastIndex]
-        raise ValueError, \
-                'No services have been configured for rotation.  ' \
-                'See conf.supybot.plugins.ShrinkUrl.serviceRotation.'
+        raise ValueError('No services have been configured for rotation.  ' \
+                'See conf.supybot.plugins.ShrinkUrl.serviceRotation.')
 
 ShrinkUrl = conf.registerPlugin('ShrinkUrl')
 conf.registerChannelValue(ShrinkUrl, 'shrinkSnarfer',
@@ -89,7 +88,7 @@ conf.registerChannelValue(ShrinkUrl, 'outFilter',
     URLs of outgoing messages if those URLs are longer than
     supybot.plugins.ShrinkUrl.minimumLength.""")))
 conf.registerChannelValue(ShrinkUrl, 'default',
-    ShrinkService('ln', _("""Determines what website the bot will use when
+    ShrinkService('x0', _("""Determines what website the bot will use when
     shrinking a URL.""")))
 conf.registerGlobalValue(ShrinkUrl, 'bold',
     registry.Boolean(True, _("""Determines whether this plugin will bold

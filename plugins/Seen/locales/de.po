@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: Supybot\n"
 "POT-Creation-Date: 2012-03-11 20:58+UTC\n"
 "PO-Revision-Date: 2012-04-27 15:33+0200\n"
-"Last-Translator: Mika Suomalainen <mika.henrik.mainio@hotmail.com>\n"
+"Last-Translator: Mikaela Suomalainen <mikaela.suomalainen@outlook.com>\n"
 "Language-Team: German <fbesser@gmail.com>\n"
 "Language: de\n"
 "MIME-Version: 1.0\n"
@@ -123,7 +123,7 @@ msgid "%s must be in %s to use this command."
 msgstr "Du musst in %s sein, um diesen Befehl zu benutzen."
 
 #: plugin.py:334
-msgid "I couldn't find in my history of %s messages where %r last left the %s"
+msgid "I couldn't find in my history of %s messages where %r last left %s"
 msgstr "Ich konnte in meiner Vergangenheit von %s Nachrichten nichts finden, wo %r zuletzt %s verlassen hat."
 
 #: plugin.py:343

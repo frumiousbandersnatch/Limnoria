@@ -41,7 +41,6 @@ class FilterTest(ChannelPluginTestCase):
     def testNoErrors(self):
         self.assertNotError('leet foobar')
         self.assertNotError('supa1337 foobar')
-        self.assertNotError('lithp meghan sweeney')
         self.assertNotError('aol I\'m too legit to quit.')
 
     def testDisabledCommandsCannotFilter(self):
@@ -75,10 +74,6 @@ class FilterTest(ChannelPluginTestCase):
         self.assertResponse('undup foo bar baz quux', 'fo bar baz qux')
         self.assertResponse('undup aaaaaaaaaa', 'a')
 
-    def testLithp(self):
-        self.assertResponse('lithp jamessan', 'jamethan')
-        self.assertResponse('lithp Shame', 'Thame')
-
     def testMorse(self):
         self.assertResponse('unmorse [morse jemfinch]', 'JEMFINCH')
 
@@ -91,6 +86,10 @@ class FilterTest(ChannelPluginTestCase):
     
     def testUnbinary(self):
         self.assertResponse('unbinary 011011010110111101101111', 'moo')
+
+    def testUnbinary(self):
+        self.assertResponse('unbinary 011011010110111101101111', 'moo')
+        self.assertError('unbinary moo')
 
     def testRot13(self):
         for s in map(str, range(1000, 1010)):

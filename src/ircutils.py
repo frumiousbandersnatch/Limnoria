@@ -36,6 +36,7 @@ work in an IRC-case-insensitive fashion), and numerous other things.
 """
 
 from __future__ import division
+from __future__ import print_function
 
 import re
 import sys
@@ -46,12 +47,13 @@ import textwrap
 import functools
 from cStringIO import StringIO as sio
 
-import supybot.utils as utils
-from itertools import imap
+from . import utils
+from . import minisix
+
 
 def debug(s, *args):
     """Prints a debug string.  Most likely replaced by our logging debug."""
-    print '***', s % args
+    print('***', s % args)
 
 userHostmaskRe = re.compile(r'^\S+!\S+@\S+$')
 def isUserHostmask(s):
@@ -87,17 +89,17 @@ def splitHostmask(hostmask):
     assert isUserHostmask(hostmask)
     nick, rest = hostmask.split('!', 1)
     user, host = rest.split('@', 1)
-    return (intern(nick), intern(user), intern(host))
+    return (minisix.intern(nick), minisix.intern(user), minisix.intern(host))
 
 def joinHostmask(nick, ident, host):
     """nick, user, host => hostmask
     Joins the nick, ident, host into a user hostmask."""
     assert nick and ident and host
-    return intern('%s!%s@%s' % (nick, ident, host))
+    return minisix.intern('%s!%s@%s' % (nick, ident, host))
 
-_rfc1459trans = utils.str.MultipleReplacer(dict(zip(
+_rfc1459trans = utils.str.MultipleReplacer(dict(list(zip(
                                  string.ascii_uppercase + r'\[]~',
-                                 string.ascii_lowercase + r'|{}^')))
+                                 string.ascii_lowercase + r'|{}^'))))
 def toLower(s, casemapping=None):
     """s => s
     Returns the string s lowered according to IRC case rules."""
@@ -106,7 +108,7 @@ def toLower(s, casemapping=None):
     elif casemapping == 'ascii': # freenode
         return s.lower()
     else:
-        raise ValueError, 'Invalid casemapping: %r' % casemapping
+        raise ValueError('Invalid casemapping: %r' % casemapping)
 
 def strEqual(nick1, nick2):
     """s1, s2 => bool
@@ -160,7 +162,7 @@ def areReceivers(s, strictRfc=True, nicklen=None, chantypes='#&+!',
     nick = functools.partial(isNick, strictRfc=strictRfc, nicklen=nicklen)
     chan = functools.partial(isChannel, chantypes=chantypes,
             channellen=channellen)
-    return all(map(lambda x:nick(x) or chan(x), s.split(',')))
+    return all([nick(x) or chan(x) for x in s.split(',')])
 
 _patternCache = utils.structures.CacheDict(1000)
 def _hostmaskPatternEqual(pattern, hostmask):
@@ -226,8 +228,8 @@ def banmask(hostmask):
         else:
             return '*!*@'  + host
 
-_plusRequireArguments = 'ovhblkqe'
-_minusRequireArguments = 'ovhbkqe'
+_plusRequireArguments = 'ovhblkqeI'
+_minusRequireArguments = 'ovhbkqeI'
 def separateModes(args):
     """Separates modelines into single mode change tuples.  Basically, you
     should give it the .args of a MODE IrcMsg.
@@ -523,7 +525,7 @@ def unDccIP(i):
         L.append(i % 256)
         i //= 256
     L.reverse()
-    return '.'.join(imap(str, L))
+    return '.'.join(map(str, L))
 
 class IrcString(str):
     """This class does case-insensitive comparison and hashing of nicks."""
@@ -711,6 +713,8 @@ def standardSubstitute(irc, msg, text, env=None):
         's': localtime[5], 'sec': localtime[5], 'second': localtime[5],
         'tz': time.strftime('%Z', localtime),
         })
+    if msg.reply_env:
+        vars.update(msg.reply_env)
     if env is not None:
         vars.update(env)
     t = string.Template(text)

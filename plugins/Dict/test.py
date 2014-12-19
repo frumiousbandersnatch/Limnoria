@@ -35,9 +35,10 @@ class DictTestCase(PluginTestCase):
     if network:
         def testDict(self):
             self.assertNotError('dict slash')
+            self.assertNotError('dict flutter')
             self.assertNotRegexp('dict web1913 slash', 'foldoc')
             self.assertError('dict ""')
-            self.assertRegexp('dict eng-fra school', 'école')
+            self.assertRegexp('dict fd-eng-fra school', 'école')
 
         def testDictionaries(self):
             self.assertNotError('dictionaries')

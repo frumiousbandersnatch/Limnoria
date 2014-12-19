@@ -29,6 +29,7 @@
 ###
 
 import os
+import sys
 import time
 import random
 
@@ -82,12 +83,14 @@ class SqliteQuoteGrabsDB(object):
             return self.dbs[filename]
         if os.path.exists(filename):
             db = sqlite3.connect(filename)
-            db.text_factory = str
+            if sys.version_info[0] < 3:
+                db.text_factory = str
             db.create_function('nickeq', 2, p)
             self.dbs[filename] = db
             return db
         db = sqlite3.connect(filename)
-        db.text_factory = str
+        if sys.version_info[0] < 3:
+            db.text_factory = str
         db.create_function('nickeq', 2, p)
         self.dbs[filename] = db
         cursor = db.cursor()
@@ -220,7 +223,8 @@ class SqliteQuoteGrabsDB(object):
 QuoteGrabsDB = plugins.DB('QuoteGrabs', {'sqlite3': SqliteQuoteGrabsDB})
 
 class QuoteGrabs(callbacks.Plugin):
-    """Add the help for "@help QuoteGrabs" here."""
+    """Stores and displays quotes from channels. Quotes are stored randomly
+    and/or on user request."""
     def __init__(self, irc):
         self.__parent = super(QuoteGrabs, self)
         self.__parent.__init__(irc)

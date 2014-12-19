@@ -38,24 +38,33 @@ import supybot.callbacks as callbacks
 from supybot.i18n import PluginInternationalization, internationalizeDocstring
 _ = PluginInternationalization('Time')
 
-from .local.dateutil import parser
 
-def parse(s):
-    todo = []
-    s = s.replace('noon', '12:00')
-    s = s.replace('midnight', '00:00')
-    if 'tomorrow' in s:
-        todo.append(lambda i: i + 86400)
-        s = s.replace('tomorrow', '')
-    if 'next week' in s:
-        todo.append(lambda i: i + 86400*7)
-        s = s.replace('next week', '')
-    i = int(time.mktime(parser.parse(s, fuzzy=True).timetuple()))
-    for f in todo:
-        i = f(i)
-    return i
+try:
+    from dateutil import parser
+    def parse(s):
+        todo = []
+        s = s.replace('noon', '12:00')
+        s = s.replace('midnight', '00:00')
+        if 'tomorrow' in s:
+            todo.append(lambda i: i + 86400)
+            s = s.replace('tomorrow', '')
+        if 'next week' in s:
+            todo.append(lambda i: i + 86400*7)
+            s = s.replace('next week', '')
+        i = int(time.mktime(parser.parse(s, fuzzy=True).timetuple()))
+        for f in todo:
+            i = f(i)
+        return i
+except ImportError:
+    parse = None
+
+try:
+    from dateutil.tz import tzlocal
+except ImportError:
+    tzlocal = None
 
 class Time(callbacks.Plugin):
+    """This plugin allows you to use different time-related functions."""
     @internationalizeDocstring
     def seconds(self, irc, msg, args):
         """[<years>y] [<weeks>w] [<days>d] [<hours>h] [<minutes>m] [<seconds>s]
@@ -92,20 +101,27 @@ class Time(callbacks.Plugin):
         irc.reply(str(seconds))
 
     @internationalizeDocstring
-    def at(self, irc, msg, args, s):
-        """<time string>
+    def at(self, irc, msg, args, s=None):
+        """[<time string>]
 
         Returns the number of seconds since epoch <time string> is.
         <time string> can be any number of natural formats; just try something
         and see if it will work.
+        If the <time string> is not given, defaults to now.
         """
+        if not s:
+            irc.reply(str(int(time.time())))
+            return
+        if not parse:
+            irc.error(_('This command is not available on this bot, ask the '
+                'owner to install the python-dateutil library.'), Raise=True)
         now = int(time.time())
         new = parse(s)
         if new != now:
             irc.reply(str(new))
         else:
             irc.error(_('That\'s right now!'))
-    at = wrap(at, ['text'])
+    at = wrap(at, [optional('text')])
 
     @internationalizeDocstring
     def until(self, irc, msg, args, s):
@@ -113,6 +129,9 @@ class Time(callbacks.Plugin):
 
         Returns the number of seconds until <time string>.
         """
+        if not parse:
+            irc.error(_('This command is not available on this bot, ask the '
+                'owner to install the python-dateutil library.'), Raise=True)
         now = int(time.time())
         new = parse(s)
         if new != now:
@@ -147,7 +166,13 @@ class Time(callbacks.Plugin):
                 format = self.registryValue('format', channel)
             else:
                 format = self.registryValue('format')
-        irc.reply(time.strftime(format, time.localtime(seconds)))
+        if tzlocal:
+            irc.reply(datetime.fromtimestamp(seconds, tzlocal()).strftime(format))
+        else:
+            # NOTE: This has erroneous behavior on some older Python versions,
+            # including at least up to 2.7.5 and 3.2.3. Install dateutil if you
+            # can't upgrade Python.
+            irc.reply(time.strftime(format, time.localtime(seconds)))
     time = wrap(time, [optional('channel'), optional('nonInt'),
                        additional('float', TIME.time)])
 
@@ -165,7 +190,8 @@ class Time(callbacks.Plugin):
     def tztime(self, irc, msg, args, timezone):
         """<region>/<city>
 
-        Takes a city and its region, and returns the locale time."""
+        Takes a city and its region, and returns the locale time. This 
+        command uses the IANA Time Zone Database."""
         try:
             import pytz
         except ImportError:
@@ -177,7 +203,7 @@ class Time(callbacks.Plugin):
         except pytz.UnknownTimeZoneError:
             irc.error(_('Unknown timezone'))
             return
-        irc.reply(str(datetime.now(timezone)))
+        irc.reply(datetime.now(timezone).strftime('%F %T%z'))
     tztime = wrap(tztime, ['text'])
 
 

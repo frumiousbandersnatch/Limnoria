@@ -29,6 +29,7 @@
 ###
 
 import os
+import sys
 import time
 import string
 import urllib
@@ -124,14 +125,14 @@ class FactoidsCallback(httpserver.SupyHTTPServerCallback):
             self.send_response(200)
             self.send_header('Content-type', 'text/html; charset=utf-8')
             self.end_headers()
-            self.wfile.write(httpserver.get_template('factoids/index.html'))
+            self.write(httpserver.get_template('factoids/index.html'))
         elif len(parts) == 2:
             channel = urllib.unquote(parts[0])
             if not ircutils.isChannel(channel):
                 self.send_response(404)
                 self.send_header('Content-type', 'text/html; charset=utf-8')
                 self.end_headers()
-                self.wfile.write(httpserver.get_template('generic/error.html')%
+                self.write(httpserver.get_template('generic/error.html')%
                     {'title': 'Factoids - not a channel',
                      'error': 'This is not a channel'})
                 return
@@ -139,7 +140,7 @@ class FactoidsCallback(httpserver.SupyHTTPServerCallback):
                 self.send_response(403)
                 self.send_header('Content-type', 'text/html; charset=utf-8')
                 self.end_headers()
-                self.wfile.write(httpserver.get_template('generic/error.html')%
+                self.write(httpserver.get_template('generic/error.html')%
                     {'title': 'Factoids - unavailable',
                      'error': 'This channel does not exist or its factoids '
                               'are not available here.'})
@@ -172,7 +173,7 @@ class FactoidsCallback(httpserver.SupyHTTPServerCallback):
             self.send_response(200)
             self.send_header('Content-type', 'text/html; charset=utf-8')
             self.end_headers()
-            self.wfile.write(httpserver.get_template('factoids/channel.html')%
+            self.write(httpserver.get_template('factoids/channel.html')%
                     {'channel': channel, 'rows': content})
     def doPost(self, handler, path, form):
         if 'chan' in form:
@@ -184,9 +185,10 @@ class FactoidsCallback(httpserver.SupyHTTPServerCallback):
             self.send_response(400)
             self.send_header('Content-type', 'text/plain; charset=utf-8')
             self.end_headers()
-            self.wfile.write('Missing field \'chan\'.')
+            self.write('Missing field \'chan\'.')
 
 class Factoids(callbacks.Plugin, plugins.ChannelDBHandler):
+    """Provides the ability to show Factoids."""
     def __init__(self, irc):
         callbacks.Plugin.__init__(self, irc)
         plugins.ChannelDBHandler.__init__(self)
@@ -217,10 +219,12 @@ class Factoids(callbacks.Plugin, plugins.ChannelDBHandler):
     def makeDb(self, filename):
         if os.path.exists(filename):
             db = sqlite3.connect(filename)
-            db.text_factory = str
+            if sys.version_info[0] < 3:
+                db.text_factory = str
             return db
         db = sqlite3.connect(filename)
-        db.text_factory = str
+        if sys.version_info[0] < 3:
+            db.text_factory = str
         cursor = db.cursor()
         cursor.execute("""CREATE TABLE keys (
                           id INTEGER PRIMARY KEY,
@@ -244,7 +248,7 @@ class Factoids(callbacks.Plugin, plugins.ChannelDBHandler):
 
     def getCommandHelp(self, command, simpleSyntax=None):
         method = self.getCommandMethod(command)
-        if method.im_func.func_name == 'learn':
+        if method.im_func.__name__ == 'learn':
             chan = None
             if dynamic.msg is not None:
                 chan = dynamic.msg.args[0]
@@ -352,7 +356,7 @@ class Factoids(callbacks.Plugin, plugins.ChannelDBHandler):
             return []
         flkeys = [line[0] for line in flkeys]
         dl_metrics = [dameraulevenshtein(key, sourcekey) for sourcekey in flkeys]
-        dict_metrics = dict(zip(flkeys, dl_metrics))
+        dict_metrics = dict(list(zip(flkeys, dl_metrics)))
         if min(dl_metrics) <= 2:
             return [key for key,item in dict_metrics.iteritems() if item <= 2]
         if min(dl_metrics) <= 3:

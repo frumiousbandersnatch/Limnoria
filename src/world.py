@@ -42,11 +42,7 @@ import multiprocessing
 
 import re
 
-import supybot.log as log
-import supybot.conf as conf
-import supybot.drivers as drivers
-import supybot.ircutils as ircutils
-import supybot.registry as registry
+from . import conf, drivers, ircutils, log, registry
 
 startedAt = time.time() # Just in case it doesn't get set later.
 
@@ -59,7 +55,7 @@ def isMainThread():
 
 threadsSpawned = 1 # Starts at one for the initial "thread."
 
-class SupyThread(threading.Thread):
+class SupyThread(threading.Thread, object):
     def __init__(self, *args, **kwargs):
         global threadsSpawned
         threadsSpawned += 1
@@ -122,7 +118,7 @@ def flush():
     for (i, f) in enumerate(flushers):
         try:
             f()
-        except Exception, e:
+        except Exception as e:
             log.exception('Uncaught exception in flusher #%s (%s):', i, f)
 
 def debugFlush(s=''):

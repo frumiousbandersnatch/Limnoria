@@ -30,6 +30,7 @@
 
 import re
 import sys
+import socket
 import HTMLParser
 import htmlentitydefs
 
@@ -37,6 +38,7 @@ import supybot.conf as conf
 import supybot.utils as utils
 from supybot.commands import *
 import supybot.plugins as plugins
+import supybot.commands as commands
 import supybot.ircutils as ircutils
 import supybot.callbacks as callbacks
 from supybot.i18n import PluginInternationalization, internationalizeDocstring
@@ -68,16 +70,54 @@ class Title(HTMLParser.HTMLParser):
             if name in self.entitydefs:
                 self.title += self.entitydefs[name]
 
+class DelayedIrc:
+    def __init__(self, irc):
+        self._irc = irc
+        self._replies = []
+    def reply(self, *args, **kwargs):
+        self._replies.append(('reply', args, kwargs))
+    def error(self, *args, **kwargs):
+        self._replies.append(('error', args, kwargs))
+    def __getattr__(self, name):
+        assert name not in ('reply', 'error', '_irc', '_msg', '_replies')
+        return getattr(self._irc, name)
+
+def fetch_sandbox(f):
+    """Runs a command in a forked process with limited memory resources
+    to prevent memory bomb caused by specially crafted http responses."""
+    def process(self, irc, msg, *args, **kwargs):
+        delayed_irc = DelayedIrc(irc)
+        f(self, delayed_irc, msg, *args, **kwargs)
+        return delayed_irc._replies
+    def newf(self, irc, *args):
+        try:
+            replies = commands.process(process, self, irc, *args,
+                    timeout=10, heap_size=1024*1024,
+                    pn=self.name(), cn=f.__name__)
+        except commands.ProcessTimeoutError:
+            raise utils.web.Error(_('Page is too big or the server took '
+                    'too much time to answer the request.'))
+        else:
+            for (method, args, kwargs) in replies:
+                getattr(irc, method)(*args, **kwargs)
+    newf.__doc__ = f.__doc__
+    return newf
+
+def catch_web_errors(f):
+    """Display a nice error instead of "An error has occurred"."""
+    def newf(self, irc, *args, **kwargs):
+        try:
+            f(self, irc, *args, **kwargs)
+        except utils.web.Error as e:
+            irc.reply(str(e))
+    newf.__doc__ = f.__doc__
+    return newf
+
 class Web(callbacks.PluginRegexp):
     """Add the help for "@help Web" here."""
-    threaded = True
     regexps = ['titleSnarfer']
-    def callCommand(self, command, irc, msg, *args, **kwargs):
-        try:
-            super(Web, self).callCommand(command, irc, msg, *args, **kwargs)
-        except utils.web.Error, e:
-            irc.reply(str(e))
 
+    @fetch_sandbox
     def titleSnarfer(self, irc, msg, match):
         channel = msg.args[0]
         if not irc.isChannel(channel):
@@ -95,11 +135,13 @@ class Web(callbacks.PluginRegexp):
                 return
             try:
                 size = conf.supybot.protocols.http.peekSize()
-                text = utils.web.getUrl(url, size=size)
-            except utils.web.Error, e:
+                fd = utils.web.getUrlFd(url)
+                text = fd.read(size)
+                fd.close()
+            except socket.timeout as e:
                 self.log.info('Couldn\'t snarf title of %u: %s.', url, e)
                 if self.registryValue('snarferReportIOExceptions', channel):
-                     irc.reply(url+" : "+utils.web.strError(e), prefixNick=False)
+                     irc.reply(url+" : "+utils.web.TIMED_OUT, prefixNick=False)
                 return
             try:
                 text = text.decode(utils.web.getEncoding(text) or 'utf8',
@@ -113,13 +155,13 @@ class Web(callbacks.PluginRegexp):
                 self.log.debug('Encountered a problem parsing %u.  Title may '
                                'already be set, though', url)
             if parser.title:
-                domain = utils.web.getDomain(url)
+                domain = utils.web.getDomain(fd.geturl()
+                        if self.registryValue('snarferShowTargetDomain', channel)
+                        else url)
                 title = utils.web.htmlToText(parser.title.strip())
                 if sys.version_info[0] < 3:
-                    try:
+                    if isinstance(title, unicode):
                         title = title.encode('utf8', 'replace')
-                    except UnicodeDecodeError:
-                        pass
                 s = format(_('Title: %s (at %s)'), title, domain)
                 irc.reply(s, prefixNick=False)
     titleSnarfer = urlSnarfer(titleSnarfer)
@@ -138,6 +180,8 @@ class Web(callbacks.PluginRegexp):
                 break
         return passed
 
+    @catch_web_errors
+    @fetch_sandbox
     @internationalizeDocstring
     def headers(self, irc, msg, args, url):
         """<url>
@@ -158,6 +202,8 @@ class Web(callbacks.PluginRegexp):
     headers = wrap(headers, ['httpUrl'])
 
     _doctypeRe = re.compile(r'(<!DOCTYPE[^>]+>)', re.M)
+    @catch_web_errors
+    @fetch_sandbox
     @internationalizeDocstring
     def doctype(self, irc, msg, args, url):
         """<url>
@@ -179,6 +225,8 @@ class Web(callbacks.PluginRegexp):
             irc.reply(_('That URL has no specified doctype.'))
     doctype = wrap(doctype, ['httpUrl'])
 
+    @catch_web_errors
+    @fetch_sandbox
     @internationalizeDocstring
     def size(self, irc, msg, args, url):
         """<url>
@@ -207,6 +255,8 @@ class Web(callbacks.PluginRegexp):
             fd.close()
     size = wrap(size, ['httpUrl'])
 
+    @catch_web_errors
+    @fetch_sandbox
     @internationalizeDocstring
     def title(self, irc, msg, args, optlist, url):
         """[--no-filter] <url>
@@ -223,9 +273,12 @@ class Web(callbacks.PluginRegexp):
         try:
             text = text.decode(utils.web.getEncoding(text) or 'utf8',
                     'replace')
-        except:
+        except UnicodeDecodeError:
             pass
         parser = Title()
+        if sys.version_info[0] >= 3 and isinstance(text, bytes):
+            irc.error(_('Could not guess the page\'s encoding. (Try '
+                    'installing python-charade'), Raise=True)
         try:
             parser.feed(text)
         except HTMLParser.HTMLParseError:
@@ -263,6 +316,8 @@ class Web(callbacks.PluginRegexp):
         irc.reply(s)
     urlunquote = wrap(urlunquote, ['text'])
 
+    @catch_web_errors
+    @fetch_sandbox
     @internationalizeDocstring
     def fetch(self, irc, msg, args, url):
         """<url>

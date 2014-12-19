@@ -37,18 +37,16 @@ import codecs
 import string
 import textwrap
 
-import supybot.utils as utils
-import supybot.i18n as i18n
-
+from . import utils, i18n
 _ = i18n.PluginInternationalization()
 
 def error(s):
    """Replace me with something better from another module!"""
-   print '***', s
+   print('***', s)
 
 def exception(s):
     """Ditto!"""
-    print '***', s, 'A bad exception.'
+    print('***', s, 'A bad exception.')
 
 class RegistryException(Exception):
     pass
@@ -105,7 +103,7 @@ def open_registry(filename, clear=False):
             value = decoder(value)[0]
             acc = ''
         except ValueError:
-            raise InvalidRegistryFile, 'Error unpacking line %r' % acc
+            raise InvalidRegistryFile('Error unpacking line %r' % acc)
         _cache[key] = value
     _lastModified = time.time()
     _fd.close()
@@ -129,12 +127,12 @@ def close(registry, filename, private=True):
                     lines.append('#\n')
                     try:
                         x = value.__class__(value._default, value._help)
-                    except Exception, e:
+                    except Exception as e:
                         exception('Exception instantiating default for %s:' %
                                   value._name)
                     try:
                         lines.append('# Default value: %s\n' % x)
-                    except Exception, e:
+                    except Exception as e:
                         exception('Exception printing default value of %s:' %
                                   value._name)
             lines.append('###\n')
@@ -146,7 +144,7 @@ def close(registry, filename, private=True):
                 else:
                     s = 'CENSORED'
                 fd.write('%s: %s\n' % (name, s))
-            except Exception, e:
+            except Exception as e:
                 exception('Exception printing value:')
     fd.close()
 
@@ -171,7 +169,7 @@ def unescape(name):
 
 _splitRe = re.compile(r'(?<!\\)\.')
 def split(name):
-    return map(unescape, _splitRe.split(name))
+    return list(map(unescape, _splitRe.split(name)))
 
 def join(names):
     return '.'.join(map(escape, names))
@@ -201,11 +199,11 @@ class Group(object):
         self.X = X
 
     def __call__(self):
-        raise ValueError, 'Groups have no value.'
+        raise ValueError('Groups have no value.')
 
     def __nonExistentEntry(self, attr):
         s = '%r is not a valid entry in %r' % (attr, self._name)
-        raise NonExistentRegistryEntry, s
+        raise NonExistentRegistryEntry(s)
 
     def __makeChild(self, attr, s):
         v = self.__class__(self._default, self._help)
@@ -215,6 +213,9 @@ class Group(object):
         v._help = '' # Clear this so it doesn't print a bazillion times.
         self.register(attr, v)
         return v
+
+    def __hasattr__(self, attr):
+        return attr in self._children
 
     def __getattr__(self, attr):
         if attr in self._children:
@@ -252,9 +253,11 @@ class Group(object):
 
     def register(self, name, node=None):
         if not isValidRegistryName(name):
-            raise InvalidRegistryName, name
+            raise InvalidRegistryName(name)
         if node is None:
-            node = Group()
+            node = Group(private=self._private)
+        else:
+            node._private = node._private or self._private
         # We tried in any number of horrible ways to make it so that
         # re-registering something would work.  It doesn't, plain and simple.
         # For the longest time, we had an "Is this right?" comment here, but
@@ -523,9 +526,9 @@ class OnlySomeStrings(String):
         self.__parent = super(OnlySomeStrings, self)
         self.__parent.__init__(*args, **kwargs)
         self.__doc__ = format(_('Valid values include %L.'),
-                              map(repr, self.validStrings))
+                              list(map(repr, self.validStrings)))
         self.errormsg = format(_('Valid values include %L, not %%r.'),
-                              map(repr, self.validStrings))
+                              list(map(repr, self.validStrings)))
 
     def help(self):
         strings = [s for s in self.validStrings if s]
@@ -615,7 +618,7 @@ class Regexp(Value):
                 self.setValue(utils.str.perlReToPythonRe(s), sr=s)
             else:
                 self.setValue(None)
-        except ValueError, e:
+        except ValueError as e:
             self.error(e)
 
     def setValue(self, v, sr=None):
@@ -626,9 +629,8 @@ class Regexp(Value):
             self.sr = sr
             self.__parent.setValue(v)
         else:
-            raise InvalidRegistryValue, \
-                  'Can\'t setValue a regexp, there would be an inconsistency '\
-                  'between the regexp and the recorded string value.'
+            raise InvalidRegistryValue('Can\'t setValue a regexp, there would be an inconsistency '\
+                  'between the regexp and the recorded string value.')
 
     def __str__(self):
         self() # Gotta update if we've been reloaded.
@@ -682,6 +684,13 @@ class SpaceSeparatedSetOfStrings(SpaceSeparatedListOfStrings):
     List = set
 
 class CommaSeparatedListOfStrings(SeparatedListOf):
+    Value = String
+    def splitter(self, s):
+        return re.split(r'\s*,\s*', s)
+    joiner = ', '.join
+
+class CommaSeparatedSetOfStrings(SeparatedListOf):
+    List = set
     Value = String
     def splitter(self, s):
         return re.split(r'\s*,\s*', s)

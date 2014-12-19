@@ -34,7 +34,7 @@ _ = PluginInternationalization('Karma')
 
 def configure(advanced):
     # This will be called by supybot to configure this module.  advanced is
-    # a bool that specifies whether the user identified himself as an advanced
+    # a bool that specifies whether the user identified themself as an advanced
     # user or not.  You should effect your configuration by manipulating the
     # registry as appropriate.
     from supybot.questions import expect, anything, something, yn
@@ -45,6 +45,12 @@ Karma = conf.registerPlugin('Karma')
 conf.registerChannelValue(Karma, 'simpleOutput',
     registry.Boolean(False, _("""Determines whether the bot will output shorter
     versions of the karma output when requesting a single thing's karma.""")))
+conf.registerChannelValue(Karma, 'incrementChars',
+    registry.SpaceSeparatedListOfStrings(['++'], _("""A space separated list of
+    characters to increase karma.""")))
+conf.registerChannelValue(Karma, 'decrementChars',
+    registry.SpaceSeparatedListOfStrings(['--'], _("""A space separated list of
+    characters to decrease karma.""")))
 conf.registerChannelValue(Karma, 'response',
     registry.Boolean(False, _("""Determines whether the bot will reply with a
     success message when something's karma is increased or decreased.""")))
@@ -58,7 +64,7 @@ conf.registerChannelValue(Karma, 'allowSelfRating',
     registry.Boolean(False, _("""Determines whether users can adjust the karma
     of their nick.""")))
 conf.registerChannelValue(Karma, 'allowUnaddressedKarma',
-    registry.Boolean(False, _("""Determines whether the bot will
+    registry.Boolean(True, _("""Determines whether the bot will
     increase/decrease karma without being addressed.""")))
 
 # vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:

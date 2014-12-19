@@ -78,6 +78,7 @@ def numberShifts(s):
     return len(s)-1
 
 class Nickometer(callbacks.Plugin):
+    """Will tell you how lame a nick is by the command `@nickometer [nick]`."""
     def punish(self, damage, reason):
         self.log.debug('%s lameness points awarded: %s', damage, reason)
         return damage
@@ -119,8 +120,8 @@ class Nickometer(callbacks.Plugin):
                        ('\\[rkx]0', 1000),
                        ('\\0[rkx]', 1000)]
 
-        letterNumberTranslator = utils.str.MultipleReplacer(dict(zip(
-                '023457+8', 'ozeasttb')))
+        letterNumberTranslator = utils.str.MultipleReplacer(dict(list(zip(
+                '023457+8', 'ozeasttb'))))
         for special in specialCost:
             tempNick = nick
             if special[0][0] != '\\':
@@ -145,7 +146,7 @@ class Nickometer(callbacks.Plugin):
                                     '%s consecutive non-alphas ' % len(match))
 
         # Remove balanced brackets ...
-        while 1:
+        while True:
             nickInitial = nick
             nick=re.sub('^([^()]*)(\()(.*)(\))([^()]*)$', '\1\3\5', nick, 1)
             nick=re.sub('^([^{}]*)(\{)(.*)(\})([^{}]*)$', '\1\3\5', nick, 1)
@@ -163,7 +164,7 @@ class Nickometer(callbacks.Plugin):
         # Punish k3wlt0k
         k3wlt0k_weights = (5, 5, 2, 5, 2, 3, 1, 2, 2, 2)
         for i in range(len(k3wlt0k_weights)):
-            hits=re.findall(`i`, nick)
+            hits=re.findall(repr(i), nick)
             if (hits and len(hits)>0):
                 score += self.punish(k3wlt0k_weights[i] * len(hits) * 30,
                                     '%s occurrences of %s ' % (len(hits), i))
@@ -225,7 +226,7 @@ class Nickometer(callbacks.Plugin):
                      (1 - 1 / (1 + score / 5.0)) // 2
 
         # if it's above 99.9%, show as many digits as is interesting
-        score_string=re.sub('(99\\.9*\\d|\\.\\d).*','\\1',`percentage`)
+        score_string=re.sub('(99\\.9*\\d|\\.\\d).*','\\1',repr(percentage))
 
         irc.reply(_('The "lame nick-o-meter" reading for "%s" is %s%%.') %
                   (originalNick, score_string))

@@ -106,6 +106,7 @@ class DbiNewsDB(plugins.DbiChannelDB):
 NewsDB = plugins.DB('News', {'flat': DbiNewsDB})
 
 class News(callbacks.Plugin):
+    """This plugin provides a means of maintaining News for a channel."""
     def __init__(self, irc):
         self.__parent = super(News, self)
         self.__parent.__init__(irc)
@@ -153,7 +154,7 @@ class News(callbacks.Plugin):
             try:
                 record = self.db.get(channel, id)
                 irc.reply(str(record))
-            except dbi.NoRecordError, id:
+            except dbi.NoRecordError as id:
                 irc.errorInvalid(_('news item id'), id)
     news = wrap(news, ['channeldb', additional('positiveInt')])
 
@@ -199,7 +200,7 @@ class News(callbacks.Plugin):
             try:
                 record = self.db.getOld(channel, id)
                 irc.reply(str(record))
-            except dbi.NoRecordError, id:
+            except dbi.NoRecordError as id:
                 irc.errorInvalid(_('news item id'), id)
         else:
             try:

@@ -77,10 +77,10 @@ class Filter(callbacks.Plugin):
                     msg = ircmsgs.IrcMsg(msg=msg, args=(msg.args[0], s))
         return msg
 
-    _filterCommands = ['jeffk', 'leet', 'rot13', 'hexlify', 'binary', 'lithp',
+    _filterCommands = ['jeffk', 'leet', 'rot13', 'hexlify', 'binary',
                        'scramble', 'morse', 'reverse', 'colorize', 'squish',
                        'supa1337', 'colorstrip', 'aol', 'rainbow', 'spellit',
-                       'hebrew', 'undup', 'gnu', 'shrink', 'azn', 'uniud']
+                       'hebrew', 'undup', 'gnu', 'shrink', 'uniud']
     @internationalizeDocstring
     def outfilter(self, irc, msg, args, channel, command):
         """[<channel>] [<command>]
@@ -146,9 +146,19 @@ class Filter(callbacks.Plugin):
         Returns the binary representation of <text>.
         """
         L = []
-        for c in text:
+        if sys.version_info[0] >= 3:
+            print(repr(text))
+            if isinstance(text, str):
+                bytes_ = text.encode()
+            else:
+                bytes_ = text
+        else:
+            if isinstance(text, unicode):
+                text = text.encode()
+            bytes_ = map(ord, text)
+        for i in bytes_:
             LL = []
-            i = ord(c)
+            assert i<=256
             counter = 8
             while i:
                 counter -= 1
@@ -165,19 +175,20 @@ class Filter(callbacks.Plugin):
         irc.reply(''.join(L))
     binary = wrap(binary, ['text'])
 
-    @internationalizeDocstring
     def unbinary(self, irc, msg, args, text):
         """<text>
 
         Returns the character representation of binary <text>.
         Assumes ASCII, 8 digits per character.
         """
-        L = [chr(int(text[i:(i+8)], 2)) for i in xrange(0, len(text), 8)]
-        irc.reply(''.join(L))
+        try:
+            L = [chr(int(text[i:(i+8)], 2)) for i in xrange(0, len(text), 8)]
+            irc.reply(''.join(L))
+        except ValueError:
+            irc.errorInvalid('binary string', text)
     unbinary = wrap(unbinary, ['text'])
 
     _hex_encoder = staticmethod(codecs.getencoder('hex_codec'))
-    @internationalizeDocstring
     def hexlify(self, irc, msg, args, text):
         """<text>
 
@@ -216,32 +227,8 @@ class Filter(callbacks.Plugin):
         irc.reply(self._rot13_encoder(text)[0])
     rot13 = wrap(rot13, ['text'])
 
-    @internationalizeDocstring
-    def lithp(self, irc, msg, args, text):
-        """<text>
-
-        Returns the lisping version of <text>
-        """
-        text = text.replace('sh', 'th')
-        text = text.replace('SH', 'TH')
-        text = text.replace('Sh', 'Th')
-        text = text.replace('ss', 'th')
-        text = text.replace('SS', 'TH')
-        text = text.replace('s', 'th')
-        text = text.replace('z', 'th')
-        text = text.replace('S', 'Th')
-        text = text.replace('Z', 'Th')
-        text = text.replace('x', 'kth')
-        text = text.replace('X', 'KTH')
-        text = text.replace('cce', 'kth')
-        text = text.replace('CCE', 'KTH')
-        text = text.replace('tion', 'thion')
-        text = text.replace('TION', 'THION')
-        irc.reply(text)
-    lithp = wrap(lithp, ['text'])
-
-    _leettrans = utils.str.MultipleReplacer(dict(zip('oOaAeElBTiIts',
-                                                     '004433187!1+5')))
+    _leettrans = utils.str.MultipleReplacer(dict(list(zip('oOaAeElBTiIts',
+                                                     '004433187!1+5'))))
     _leetres = [(re.compile(r'\b(?:(?:[yY][o0O][oO0uU])|u)\b'), 'j00'),
                 (re.compile(r'fear'), 'ph33r'),
                 (re.compile(r'[aA][tT][eE]'), '8'),
@@ -415,7 +402,7 @@ class Filter(callbacks.Plugin):
         if sys.version_info[0] < 3:
             text = text.decode('utf-8')
         colors = utils.iter.cycle(['04', '07', '08', '03', '02', '12', '06'])
-        L = [self._color(c, fg=colors.next()) for c in text]
+        L = [self._color(c, fg=next(colors)) for c in text]
         if sys.version_info[0] < 3:
             L = [c.encode('utf-8') for c in L]
         irc.reply(''.join(L) + '\x03')
@@ -434,7 +421,7 @@ class Filter(callbacks.Plugin):
     def aol(self, irc, msg, args, text):
         """<text>
 
-        Returns <text> as if an AOLuser had said it.
+        Returns <text> as if an AOL user had said it.
         """
         text = text.replace(' you ', ' u ')
         text = text.replace(' are ', ' r ')
@@ -631,7 +618,7 @@ class Filter(callbacks.Plugin):
             except KeyError:
                 pass
             write(c)
-        irc.reply(out.getvalue())
+        irc.reply(out.getvalue()[1:])
     spellit = wrap(spellit, ['text'])
 
     @internationalizeDocstring
@@ -661,16 +648,6 @@ class Filter(callbacks.Plugin):
         irc.reply(text)
     shrink = wrap(shrink, ['text'])
 
-    _azn_trans = utils.str.MultipleReplacer(dict(zip('rlRL', 'lrLR')))
-    @internationalizeDocstring
-    def azn(self, irc, msg, args, text):
-        """<text>
-
-        Returns <text> with the l's made into r's and r's made into l's.
-        """
-        text = self._azn_trans(text)
-        irc.reply(text)
-    azn = wrap(azn, ['text'])
 
     # TODO: 2,4,;
     # XXX suckiest: B,K,P,Q,T
@@ -725,16 +702,16 @@ class Filter(callbacks.Plugin):
                 tmp = self._uniudMap[c]
                 if not len(tmp):
                     tmp = u'\ufffd'
-                turned.insert(0, tmp)
+                turned.append(tmp)
                 tlen += 1
             elif c == '\t':
                 tablen = 8 - tlen % 8
-                turned.insert(0, ' ' * tablen)
+                turned.append(' ' * tablen)
                 tlen += tablen
             elif ord(c) >= 32:
-                turned.insert(0, c)
+                turned.append(c)
                 tlen += 1
-        s = '%s \x02 \x02' % ''.join(turned)
+        s = u'%s \x02 \x02' % u''.join(reversed(turned))
         irc.reply(s)
     uniud = wrap(uniud, ['text'])
 Filter = internationalizeDocstring(Filter)

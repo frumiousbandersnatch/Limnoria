@@ -34,7 +34,7 @@ _ = PluginInternationalization('Topic')
 
 def configure(advanced):
     # This will be called by supybot to configure this module.  advanced is
-    # a bool that specifies whether the user identified himself as an advanced
+    # a bool that specifies whether the user identified themself as an advanced
     # user or not.  You should effect your configuration by manipulating the
     # registry as appropriate.
     from supybot.questions import expect, anything, something, yn
@@ -47,10 +47,10 @@ class TopicFormat(registry.TemplatedString):
 
 Topic = conf.registerPlugin('Topic')
 conf.registerChannelValue(Topic, 'separator',
-    registry.StringSurroundedBySpaces(' || ', _("""Determines what separator is
+    registry.StringSurroundedBySpaces('|', _("""Determines what separator is
     used between individually added topics in the channel topic.""")))
 conf.registerChannelValue(Topic, 'format',
-    TopicFormat('$topic ($nick)', _("""Determines what format is used to add
+    TopicFormat('$topic', _("""Determines what format is used to add
     topics in the topic.  All the standard substitutes apply, in addition to
     "$topic" for the topic itself.""")))
 conf.registerChannelValue(Topic, 'recognizeTopiclen',
@@ -61,6 +61,9 @@ conf.registerChannelValue(Topic, 'recognizeTopiclen',
 conf.registerChannelValue(Topic, 'default',
     registry.String('', _("""Determines what the default topic for the channel
     is.  This is used by the default command to set this topic.""")))
+conf.registerChannelValue(Topic, 'alwaysSetOnJoin',
+    registry.Boolean(False, _("""Determines whether the bot will set the topic
+    every time it joins, or only if the topic is empty.""")))
 conf.registerGroup(Topic, 'undo')
 conf.registerChannelValue(Topic.undo, 'max',
     registry.NonNegativeInteger(10, _("""Determines the number of previous

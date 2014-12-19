@@ -33,16 +33,10 @@ import sys
 import time
 import socket
 
-import supybot.utils as utils
-import supybot.registry as registry
-import supybot.ircutils as ircutils
-from supybot.i18n import PluginInternationalization
+from . import ircutils, registry, utils
+from .version import version
+from .i18n import PluginInternationalization
 _ = PluginInternationalization()
-
-###
-# version: This should be pretty obvious.
-###
-from supybot.version import version
 
 ###
 # *** The following variables are affected by command-line options.  They are
@@ -220,9 +214,9 @@ class VersionIfEmpty(registry.String):
         return ret
 
 registerGlobalValue(supybot, 'user',
-    VersionIfEmpty('', _("""Determines the user the bot sends to the server.
-    A standard user using the current version of the bot will be generated if
-    this is left empty.""")))
+    VersionIfEmpty('', _("""Determines the real name which the bot sends to
+    the server. A standard real name using the current version of the bot
+    will be generated if this is left empty.""")))
 
 class Networks(registry.SpaceSeparatedSetOfStrings):
     List = ircutils.IrcSet
@@ -282,6 +276,9 @@ class SpaceSeparatedSetOfChannels(registry.SpaceSeparatedListOf):
         channels = []
         channels_with_key = []
         keys = []
+        old = None
+        msgs = []
+        msg = None
         for channel in self():
             key = self.key.get(channel)()
             if key:
@@ -289,8 +286,16 @@ class SpaceSeparatedSetOfChannels(registry.SpaceSeparatedListOf):
                 channels_with_key.append(channel)
             else:
                 channels.append(channel)
-        if channels_with_key or channels:
-            return ircmsgs.joins(channels_with_key + channels, keys)
+            msg = ircmsgs.joins(channels_with_key + channels, keys)
+            if len(str(msg)) > 512:
+                msgs.append(old)
+                keys = []
+                channels_with_key = []
+                channels = []
+            old = msg
+        if msg:
+            msgs.append(msg)
+            return msgs
         else:
             # Let's be explicit about it
             return None
@@ -303,21 +308,30 @@ def registerNetwork(name, password='', ssl=False, sasl_username='',
         technically passwords are server-specific and not network-specific,
         but this is the best we can do right now.""") % name, private=True))
     registryServers = registerGlobalValue(network, 'servers', Servers([],
-        _("""Determines what servers the bot will connect to for %s.  Each will
-        be tried in order, wrapping back to the first when the cycle is
-        completed.""") % name))
+        _("""Space-separated list of servers the bot will connect to for %s.
+        Each will be tried in order, wrapping back to the first when the cycle
+        is completed.""") % name))
     registerGlobalValue(network, 'channels', SpaceSeparatedSetOfChannels([],
-        _("""Determines what channels the bot will join only on %s.""") %
-        name, private=True))
+        _("""Space-separated list of channels the bot will join only on %s.""")
+        % name, private=True))
     registerGlobalValue(network, 'ssl', registry.Boolean(ssl,
         _("""Determines whether the bot will attempt to connect with SSL
         sockets to %s.""") % name))
+    registerGlobalValue(network, 'certfile', registry.String('',
+        _("""Determines what certificate file (if any) the bot will use to
+        connect with SSL sockets to %s.""") % name))
     registerChannelValue(network.channels, 'key', registry.String('',
         _("""Determines what key (if any) will be used to join the
         channel."""), private=True))
     registerGlobalValue(network, 'nick', ValidNickOrEmpty('', _("""Determines
         what nick the bot will use on this network. If empty, defaults to
         supybot.nick.""")))
+    registerGlobalValue(network, 'ident', ValidNickOrEmpty('', _("""Determines
+        the bot's ident string, if the server doesn't provide one by default.
+        If empty, defaults to supybot.ident.""")))
+    registerGlobalValue(network, 'user', registry.String('', _("""Determines
+        the real name which the bot sends to the server. If empty, defaults to
+        supybot.user""")))
     registerGlobalValue(network, 'umodes',
         registry.String('', _("""Determines what user modes the bot will request
         from the server when it first connects. If empty, defaults to
@@ -353,14 +367,15 @@ registerGroup(supybot.reply, 'format')
 registerChannelValue(supybot.reply.format, 'url',
     registry.String('<%s>', _("""Determines how urls should be formatted.""")))
 registerChannelValue(supybot.reply.format, 'time',
-    registry.String('%I:%M %p, %B %d, %Y', _("""Determines how timestamps
+    registry.String('%Y-%m-%d %H:%M:%S%z', _("""Determines how timestamps
     printed for human reading should be formatted. Refer to the Python
     documentation for the time module to see valid formatting characters for
     time formats.""")))
 def timestamp(t):
     if t is None:
         t = time.time()
-    t = time.localtime(t)
+    if isinstance(t, float) or isinstance(t, int):
+        t = time.localtime(t)
     format = get(supybot.reply.format.time, dynamic.channel)
     return time.strftime(format, t)
 utils.str.timestamp = timestamp
@@ -403,9 +418,9 @@ registerChannelValue(supybot.reply.mores, 'instant',
 
 registerChannelValue(supybot.reply, 'oneToOne',
     registry.Boolean(True, _("""Determines whether the bot will send
-    multi-message replies in a single message or in multiple messages.  For
-    safety purposes (so the bot is less likely to flood) it will normally send
-    everything in a single message, using mores if necessary.""")))
+    multi-message replies in a single message. This defaults to True 
+    in order to prevent the bot from flooding. If this is set to False
+    the bot will send multi-message replies on multiple lines.""")))
 
 registerChannelValue(supybot.reply, 'whenNotCommand',
     registry.Boolean(True, _("""Determines whether the bot will reply with an
@@ -449,7 +464,7 @@ registerChannelValue(supybot.reply, 'withNotice',
 
 # XXX: User value.
 registerGlobalValue(supybot.reply, 'withNoticeWhenPrivate',
-    registry.Boolean(False, _("""Determines whether the bot will reply with a
+    registry.Boolean(True, _("""Determines whether the bot will reply with a
     notice when it is sending a private message, in order not to open a /query
     window in clients.  This can be overridden by individual users via the user
     configuration variable reply.withNoticeWhenPrivate.""")))
@@ -473,7 +488,7 @@ registerChannelValue(supybot.reply, 'requireChannelCommandsToBeSentInChannel',
 
 registerGlobalValue(supybot, 'followIdentificationThroughNickChanges',
     registry.Boolean(False, _("""Determines whether the bot will unidentify
-    someone when that person changes his or her nick.  Setting this to True
+    someone when that person changes their nick.  Setting this to True
     will cause the bot to track such changes.  It defaults to False for a
     little greater security.""")))
 
@@ -544,7 +559,7 @@ registerChannelValue(supybot.replies, 'error',
 
 registerChannelValue(supybot.replies, 'errorOwner',
     registry.NormalizedString(_("""An error has occurred and has been logged.
-    Check the logs for more informations."""), _("""Determines what error
+    Check the logs for more information."""), _("""Determines what error
     message the bot gives to the owner when it wants to be ambiguous.""")))
 
 registerChannelValue(supybot.replies, 'incorrectAuthentication',
@@ -662,12 +677,12 @@ class ValidBrackets(registry.OnlySomeStrings):
     validStrings = ('', '[]', '<>', '{}', '()')
 
 registerChannelValue(supybot.commands.nested, 'brackets',
-    ValidBrackets('[]', _("""Supybot allows you to specify what brackets are
-    used for your nested commands.  Valid sets of brackets include [], <>, and
-    {} ().  [] has strong historical motivation, as well as being the brackets
-    that don't require shift.  <> or () might be slightly superior because they
-    cannot occur in a nick.  If this string is empty, nested commands will
-    not be allowed in this channel.""")))
+    ValidBrackets('[]', _("""Supybot allows you to specify what brackets
+    are used for your nested commands.  Valid sets of brackets include
+    [], <>, {}, and ().  [] has strong historical motivation, but <> or
+    () might be slightly superior because they cannot occur in a nick.
+    If this string is empty, nested commands will not be allowed in this
+    channel.""")))
 registerChannelValue(supybot.commands.nested, 'pipeSyntax',
     registry.Boolean(False, _("""Supybot allows nested commands. Enabling this
     option will allow nested commands with a syntax similar to UNIX pipes, for
@@ -679,7 +694,7 @@ registerGroup(supybot.commands, 'defaultPlugins',
     commands."""))
 registerGlobalValue(supybot.commands.defaultPlugins, 'importantPlugins',
     registry.SpaceSeparatedSetOfStrings(
-        ['Admin', 'Channel', 'Config', 'Misc', 'Owner', 'Plugin', 'User'],
+        ['Admin', 'Channel', 'Config', 'Misc', 'Owner', 'User'],
         _("""Determines what plugins automatically get precedence over all
         other plugins when selecting a default plugin for a command.  By
         default, this includes the standard loaded plugins.  You probably
@@ -703,7 +718,7 @@ registerGlobalValue(supybot.abuse.flood, 'command',
 registerGlobalValue(supybot.abuse.flood.command, 'maximum',
     registry.PositiveInteger(12, _("""Determines how many commands users are
     allowed per minute.  If a user sends more than this many commands in any
-    60 second period, he or she will be ignored for
+    60 second period, they will be ignored for
     supybot.abuse.flood.command.punishment seconds.""")))
 registerGlobalValue(supybot.abuse.flood.command, 'punishment',
     registry.PositiveInteger(300, _("""Determines how many seconds the bot
@@ -715,7 +730,7 @@ registerGlobalValue(supybot.abuse.flood.command, 'invalid',
 registerGlobalValue(supybot.abuse.flood.command.invalid, 'maximum',
     registry.PositiveInteger(5, _("""Determines how many invalid commands users
     are allowed per minute.  If a user sends more than this many invalid
-    commands in any 60 second period, he or she will be ignored for
+    commands in any 60 second period, they will be ignored for
     supybot.abuse.flood.command.invalid.punishment seconds.  Typically, this
     value is lower than supybot.abuse.flood.command.maximum, since it's far
     less likely (and far more annoying) for users to flood with invalid
@@ -743,10 +758,10 @@ class ValidDriverModule(registry.OnlySomeStrings):
     validStrings = ('default', 'Socket', 'Twisted')
 
 registerGlobalValue(supybot.drivers, 'module',
-    ValidDriverModule('default', _("""Determines what driver module the bot
-    will use.  Socket, a simple driver based on timeout sockets, is used by
-    default because it's simple and stable.  Twisted is very stable and simple,
-    and if you've got Twisted installed, is probably your best bet.""")))
+    ValidDriverModule('default', _("""Determines what driver module the 
+    bot will use. The default is Socket which is simple and stable 
+    and supports SSL. Twisted doesn't work if the IRC server which 
+    you are connecting to has IPv6 (most of them do).""")))
 
 registerGlobalValue(supybot.drivers, 'maxReconnectWait',
     registry.PositiveFloat(300.0, _("""Determines the maximum time the bot will
@@ -842,7 +857,7 @@ class Databases(registry.SpaceSeparatedListOfStrings):
     def __call__(self):
         v = super(Databases, self).__call__()
         if not v:
-            v = ['anydbm', 'cdb', 'flat', 'pickle']
+            v = ['anydbm', 'dbm', 'cdb', 'flat', 'pickle']
             if 'sqlite' in sys.modules:
                 v.insert(0, 'sqlite')
             if 'sqlite3' in sys.modules:
@@ -940,7 +955,7 @@ registerChannelValue(supybot.databases.plugins.channelSpecific.link, 'allow',
 
 class CDB(registry.Boolean):
     def connect(self, filename):
-        import supybot.cdb as cdb
+        from . import cdb
         basename = os.path.basename(filename)
         journalName = supybot.directories.data.tmp.dirize(basename+'.journal')
         return cdb.open_db(filename, 'c',
@@ -1040,15 +1055,19 @@ class Banmask(registry.SpaceSeparatedSetOfStrings):
         return ircutils.joinHostmask(bnick, buser, bhost)
 
 registerChannelValue(supybot.protocols.irc, 'banmask',
-    Banmask(['user', 'host'], _("""Determines what will be used as the
+    Banmask(['host'], _("""Determines what will be used as the
     default banmask style.""")))
 
 registerGlobalValue(supybot.protocols.irc, 'strictRfc',
-    registry.Boolean(True, _("""Determines whether the bot will strictly follow
-    the RFC; currently this only affects what strings are considered to be
-    nicks. If you're using a server or a network that requires you to message
-    a nick such as services@this.network.server then you you should set this to
-    False.""")))
+    registry.Boolean(False, _("""Determines whether the bot will strictly
+    follow the RFC; currently this only affects what strings are
+    considered to be nicks. If you're using a server or a network that
+    requires you to message a nick such as services@this.network.server
+    then you you should set this to False.""")))
+
+registerGlobalValue(supybot.protocols.irc, 'certfile',
+    registry.String('', _("""Determines what certificate file (if any) the bot
+    will use connect with SSL sockets by default.""")))
 
 registerGlobalValue(supybot.protocols.irc, 'umodes',
     registry.String('', _("""Determines what user modes the bot will request
@@ -1058,7 +1077,11 @@ registerGlobalValue(supybot.protocols.irc, 'umodes',
 
 registerGlobalValue(supybot.protocols.irc, 'vhost',
     registry.String('', _("""Determines what vhost the bot will bind to before
-    connecting to the IRC server.""")))
+    connecting a server (IRC, HTTP, ...) via IPv4.""")))
+
+registerGlobalValue(supybot.protocols.irc, 'vhostv6',
+    registry.String('', _("""Determines what vhost the bot will bind to before
+    connecting a server (IRC, HTTP, ...) via IPv6.""")))
 
 registerGlobalValue(supybot.protocols.irc, 'maxHistoryLength',
     registry.Integer(1000, _("""Determines how many old messages the bot will
@@ -1147,9 +1170,9 @@ registerGlobalValue(supybot.servers.http, 'favicon',
 ###
 registerGlobalValue(supybot, 'defaultIgnore',
     registry.Boolean(False, _("""Determines whether the bot will ignore
-    unregistered users by default.  Of course, that'll make it particularly
-    hard for those users to register or identify with the bot, but that's your
-    problem to solve.""")))
+    unidentified users by default.  Of course, that'll make it
+    particularly hard for those users to register or identify with the bot
+    without adding their hostmasks, but that's your problem to solve.""")))
 
 
 registerGlobalValue(supybot, 'externalIP',

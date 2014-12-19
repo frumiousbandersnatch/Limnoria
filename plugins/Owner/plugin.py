@@ -66,28 +66,6 @@ def registerDefaultPlugin(command, plugin):
     # This must be set, or the quotes won't be removed.
     conf.supybot.commands.defaultPlugins.get(command).set(plugin)
 
-def registerRename(plugin, command=None, newName=None):
-    g = conf.registerGlobalValue(conf.supybot.commands.renames, plugin,
-            registry.SpaceSeparatedSetOfStrings([], """Determines what commands
-            in this plugin are to be renamed."""))
-    if command is not None:
-        g().add(command)
-        v = conf.registerGlobalValue(g, command, registry.String('', ''))
-        if newName is not None:
-            v.setValue(newName) # In case it was already registered.
-        return v
-    else:
-        return g
-
-def renameCommand(cb, name, newName):
-    assert not hasattr(cb, newName), 'Cannot rename over existing attributes.'
-    assert newName == callbacks.canonicalName(newName), \
-           'newName must already be normalized.'
-    if name != newName:
-        method = getattr(cb.__class__, name)
-        setattr(cb.__class__, newName, method)
-        delattr(cb.__class__, name)
-
 
 registerDefaultPlugin('list', 'Misc')
 registerDefaultPlugin('help', 'Misc')
@@ -101,6 +79,8 @@ registerDefaultPlugin('addcapability', 'Admin')
 registerDefaultPlugin('removecapability', 'Admin')
 
 class Owner(callbacks.Plugin):
+    """Owner-only commands for core Supybot. This is a core Supybot module
+    that should not be removed!"""
     # This plugin must be first; its priority must be lowest; otherwise odd
     # things will happen when adding callbacks.
     def __init__(self, irc=None):
@@ -142,9 +122,9 @@ class Owner(callbacks.Plugin):
             for network in conf.supybot.networks():
                 try:
                     self._connect(network)
-                except socket.error, e:
+                except socket.error as e:
                     self.log.error('Could not connect to %s: %s.', network, e)
-                except Exception, e:
+                except Exception as e:
                     self.log.exception('Exception connecting to %s:', network)
                     self.log.error('Could not connect to %s: %s.', network, e)
 
@@ -169,8 +149,8 @@ class Owner(callbacks.Plugin):
             (server, port) = group.servers()[0]
         except (registry.NonExistentRegistryEntry, IndexError):
             if serverPort is None:
-                raise ValueError, 'connect requires a (server, port) ' \
-                                  'if the network is not registered.'
+                raise ValueError('connect requires a (server, port) ' \
+                                  'if the network is not registered.')
             conf.registerNetwork(network, password, ssl)
             serverS = '%s:%s' % serverPort
             conf.supybot.networks.get(network).servers.append(serverS)
@@ -209,30 +189,42 @@ class Owner(callbacks.Plugin):
                             m = plugin.loadPluginModule(name,
                                                         ignoreDeprecation=True)
                             plugin.loadPluginClass(irc, m)
-                        except callbacks.Error, e:
+                        except callbacks.Error as e:
                             # This is just an error message.
                             log.warning(str(e))
-                        except (plugins.NoSuitableDatabase, ImportError), e:
-                            s = 'Failed to load %s: %s' % (name, e)
-                            if not s.endswith('.'):
-                                s += '.'
+                        except plugins.NoSuitableDatabase as e:
+                            s = 'Failed to load %s: no suitable database(%s).' % (name, e)
                             log.warning(s)
-                        except Exception, e:
+                        except ImportError as e:
+                            e = str(e)
+                            if e.endswith(name):
+                                s = 'Failed to load {0}: No plugin named {0} exists.'.format(
+                                    utils.str.dqrepr(name))
+                            elif "No module named 'config'" in e:
+                                s = ("Failed to load %s: This plugin may be incompatible "
+                                "with your current Python version. If this error is appearing "
+                                "with stock Supybot plugins, remove the stock plugins directory "
+                                "(usually ~/Limnoria/plugins) from 'config directories.plugins'." % name)
+                            else:
+                                s = 'Failed to load %s: import error (%s).' % (name, e)
+                            log.warning(s)
+                        except Exception as e:
                             log.exception('Failed to load %s:', name)
                 else:
                     # Let's import the module so configuration is preserved.
                     try:
                         _ = plugin.loadPluginModule(name)
-                    except Exception, e:
+                    except Exception as e:
                         log.debug('Attempted to load %s to preserve its '
                                   'configuration, but load failed: %s',
                                   name, e)
         world.starting = False
 
     def do376(self, irc, msg):
-        msg = conf.supybot.networks.get(irc.network).channels.joins()
-        if msg:
-            irc.queueMsg(msg)
+        msgs = conf.supybot.networks.get(irc.network).channels.joins()
+        if msgs:
+            for msg in msgs:
+                irc.queueMsg(msg)
     do422 = do377 = do376
 
     def setFloodQueueTimeout(self, *args, **kwargs):
@@ -267,7 +259,7 @@ class Owner(callbacks.Plugin):
             try:
                 tokens = callbacks.tokenize(s, channel=msg.args[0])
                 self.Proxy(irc, msg, tokens)
-            except SyntaxError, e:
+            except SyntaxError as e:
                 irc.queueMsg(callbacks.error(msg, str(e)))
 
     def logmark(self, irc, msg, args, text):
@@ -340,7 +332,7 @@ class Owner(callbacks.Plugin):
         """
         try:
             m = ircmsgs.IrcMsg(s)
-        except Exception, e:
+        except Exception as e:
             irc.error(utils.exnToString(e))
         else:
             irc.queueMsg(m)
@@ -435,9 +427,12 @@ class Owner(callbacks.Plugin):
             irc.error('%s is deprecated.  Use --deprecated '
                       'to force it to load.' % name.capitalize())
             return
-        except ImportError, e:
-            if str(e).endswith(' ' + name):
+        except ImportError as e:
+            if str(e).endswith(name):
                 irc.error('No plugin named %s exists.' % utils.str.dqrepr(name))
+            elif "No module named 'config'" in str(e):
+                 irc.error('This plugin may be incompatible with your current Python '
+                           'version. Try running 2to3 on it.')
             else:
                 irc.error(str(e))
             return
@@ -453,6 +448,9 @@ class Owner(callbacks.Plugin):
         Unloads and subsequently reloads the plugin by name; use the 'list'
         command to see a list of the currently loaded plugins.
         """
+        if ircutils.strEqual(name, self.name()):
+            irc.error('You can\'t reload the %s plugin.' % name)
+            return
         callbacks = irc.removeCallback(name)
         if callbacks:
             module = sys.modules[callbacks[0].__module__]
@@ -473,7 +471,7 @@ class Owner(callbacks.Plugin):
             except ImportError:
                 for callback in callbacks:
                     irc.addCallback(callback)
-                irc.error('No plugin %s exists.' % name)
+                irc.error('No plugin named %s exists.' % name)
         else:
             irc.error('There was no plugin %s.' % name)
     reload = wrap(reload, ['something'])
@@ -573,20 +571,20 @@ class Owner(callbacks.Plugin):
             irc.error('That command wasn\'t disabled.')
     enable = wrap(enable, [optional('plugin'), 'commandName'])
 
-    def rename(self, irc, msg, args, plugin, command, newName):
+    def rename(self, irc, msg, args, command_plugin, command, newName):
         """<plugin> <command> <new name>
 
         Renames <command> in <plugin> to the <new name>.
         """
-        if not plugin.isCommand(command):
-            what = 'command in the %s plugin' % plugin.name()
+        if not command_plugin.isCommand(command):
+            what = 'command in the %s plugin' % command_plugin.name()
             irc.errorInvalid(what, command)
-        if hasattr(plugin, newName):
+        if hasattr(command_plugin, newName):
             irc.error('The %s plugin already has an attribute named %s.' %
-                      (plugin, newName))
+                      (command_plugin, newName))
             return
-        registerRename(plugin.name(), command, newName)
-        renameCommand(plugin, command, newName)
+        plugin.registerRename(command_plugin.name(), command, newName)
+        plugin.renameCommand(command_plugin, command, newName)
         irc.replySuccess()
     rename = wrap(rename, ['plugin', 'commandName', 'commandName'])
 

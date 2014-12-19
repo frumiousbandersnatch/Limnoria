@@ -53,13 +53,18 @@ def universalImport(*names):
                     ret = getattr(ret, parts[0])
                     del parts[0]
             return ret
-    raise ImportError, ','.join(names)
+    raise ImportError(','.join(names))
 
 def changeFunctionName(f, name, doc=None):
     if doc is None:
         doc = f.__doc__
-    newf = types.FunctionType(f.func_code, f.func_globals, name,
-                              f.func_defaults, f.func_closure)
+    if hasattr(f, '__closure__'):
+        closure = f.__closure__
+    else:
+        # Pypy
+        closure = f.func_closure
+    newf = types.FunctionType(f.__code__, f.__globals__, name,
+                              f.__defaults__, closure)
     newf.__doc__ = doc
     return newf
 
@@ -86,7 +91,7 @@ class Synchronized(type):
                         f(self, *args, **kwargs)
                     finally:
                         lock.release()
-                return changeFunctionName(g, f.func_name, f.__doc__)
+                return changeFunctionName(g, f.__name__, f.__doc__)
             for attr in sync:
                 if attr in dict:
                     dict[attr] = synchronized(dict[attr])
@@ -139,7 +144,14 @@ def collect_extra_debug_data():
         data += ('Frame %s in %s at line %s\n' % (frame.f_code.co_name,
                                              frame.f_code.co_filename,
                                              frame.f_lineno))
-        for key, value in frame.f_locals.items():
+        frame_locals = frame.f_locals
+        for inspected in ('self', 'cls'):
+            if inspected in frame_locals:
+                if hasattr(frame_locals[inspected], '__dict__') and \
+                        frame_locals[inspected].__dict__:
+                    for (key, value) in frame_locals[inspected].__dict__.items():
+                        frame_locals['%s.%s' % (inspected, key)] = value
+        for key, value in frame_locals.items():
             if key == '__builtins__':
                 # This is flooding
                 continue

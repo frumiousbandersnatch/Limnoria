@@ -43,6 +43,9 @@ from supybot.i18n import PluginInternationalization, internationalizeDocstring
 _ = PluginInternationalization('Admin')
 
 class Admin(callbacks.Plugin):
+    """This plugin provides access to administrative commands, such as
+    adding capabilities, managing ignore lists, and joining channels.
+    This is a core Supybot plugin that should not be removed!"""
     def __init__(self, irc):
         self.__parent = super(Admin, self)
         self.__parent.__init__(irc)
@@ -151,7 +154,7 @@ class Admin(callbacks.Plugin):
         networkGroup.channels().add(channel)
         if key:
             networkGroup.channels.key.get(channel).setValue(key)
-        maxchannels = irc.state.supported.get('maxchannels', sys.maxint)
+        maxchannels = irc.state.supported.get('maxchannels', sys.maxsize)
         if len(irc.state.channels) + 1 > maxchannels:
             irc.error(_('I\'m already too close to maximum number of '
                       'channels for this network.'), Raise=True)
@@ -192,7 +195,8 @@ class Admin(callbacks.Plugin):
     def do435(self, irc, msg):
         irc = self.pendingNickChanges.get(irc, None)
         if irc is not None:
-            irc.error(_('That nick is currently banned.'))
+            irc.error(_('I can\'t change nick, I\'m currently banned in %s.') %
+                      msg.args[2])
         else:
             self.log.debug('Got 435 without Admin.nick being called.')
 
@@ -351,13 +355,11 @@ class Admin(callbacks.Plugin):
             """
             # XXX Add the expirations.
             if ircdb.ignores.hostmasks:
-                irc.reply(format('%L', (map(repr,ircdb.ignores.hostmasks))))
+                irc.reply(format('%L', (list(map(repr,ircdb.ignores.hostmasks)))))
             else:
                 irc.reply(_('I\'m not currently globally ignoring anyone.'))
         list = wrap(list)
 
-
-    @internationalizeDocstring
     def clearq(self, irc, msg, args):
         """takes no arguments
 
@@ -365,6 +367,7 @@ class Admin(callbacks.Plugin):
         """
         irc.queue.reset()
         irc.replySuccess()
+    clearq = wrap(clearq)
 
 
 

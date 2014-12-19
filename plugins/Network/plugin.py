@@ -43,6 +43,8 @@ from supybot.i18n import PluginInternationalization, internationalizeDocstring
 _ = PluginInternationalization('Network')
 
 class Network(callbacks.Plugin):
+    """Provides network-related commands, such as connecting to multiple networks
+    and checking latency to the server."""
     _whois = {}
     _latency = {}
     def _getIrc(self, network):
@@ -50,8 +52,7 @@ class Network(callbacks.Plugin):
         if irc:
             return irc
         else:
-            raise callbacks.Error, \
-                  'I\'m not currently connected to %s.' % network
+            raise callbacks.Error('I\'m not currently connected to %s.' % network)
 
     @internationalizeDocstring
     def connect(self, irc, msg, args, opts, network, server, password):
@@ -63,6 +64,10 @@ class Network(callbacks.Plugin):
         provided, it will be sent to the server in a PASS command.  If --ssl is
         provided, an SSL connection will be attempted.
         """
+        if '.' in network:
+            irc.error("Network names cannot have a '.' in them. "
+            "Remember, this is the network name, not the actual "
+            "server you plan to connect to.", Raise=True)
         try:
             otherIrc = self._getIrc(network)
             irc.error(_('I\'m already connected to %s.') % network)
@@ -141,7 +146,17 @@ class Network(callbacks.Plugin):
         """
         self.Proxy(otherIrc, msg, commandAndArgs)
     command = wrap(command, ['admin', ('networkIrc', True), many('something')])
-
+    
+    def cmdall(self, irc, msg, args, commandAndArgs):
+        """<command> <args>...
+        
+        Perform <command> (with its associated <arg>s) on all networks.
+        """
+        ircs = world.ircs
+        for ircd in ircs:
+            self.Proxy(ircd, msg, commandAndArgs)
+    cmdall = wrap(cmdall, ['admin', many('something')])
+    
     ###
     # whois command-related stuff.
     ###
@@ -149,6 +164,10 @@ class Network(callbacks.Plugin):
         nick = ircutils.toLower(msg.args[1])
         if (irc, nick) not in self._whois:
             return
+        elif msg.command == '319':
+            if '319' not in self._whois[(irc, nick)][2]:
+                self._whois[(irc, nick)][2][msg.command] = []
+            self._whois[(irc, nick)][2][msg.command].append(msg)
         else:
             self._whois[(irc, nick)][2][msg.command] = msg
 
@@ -170,7 +189,9 @@ class Network(callbacks.Plugin):
         hostmask = '@'.join(d[START_CODE].args[2:4])
         user = d[START_CODE].args[-1]
         if '319' in d:
-            channels = d['319'].args[-1].split()
+            channels = []
+            for msg in d['319']:
+                channels.extend(msg.args[-1].split())
             ops = []
             voices = []
             normal = []

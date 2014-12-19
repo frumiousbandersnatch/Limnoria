@@ -122,6 +122,7 @@ class DbiNoteDB(dbi.DB):
 NoteDB = plugins.DB('Note', {'flat': DbiNoteDB})
 
 class Note(callbacks.Plugin):
+    """Allows you to send notes to other users."""
     def __init__(self, irc):
         self.__parent= super(Note, self)
         self.__parent.__init__(irc)
@@ -295,8 +296,10 @@ class Note(callbacks.Plugin):
         own = to
         for (option, arg) in optlist:
             if option == 'regexp':
-                criteria.append(lambda x: commands.regexp_wrapper(x, reobj=arg, 
-                        timeout=0.1, plugin_name = self.name(), fcn_name='search'))
+                criteria.append(lambda s:
+                                regexp_wrapper(s, reobj=arg, timeout=0.1,
+                                               plugin_name=self.name(),
+                                               fcn_name='search'))
             elif option == 'sent':
                 own = frm
         if glob:

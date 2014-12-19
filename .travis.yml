@@ -4,12 +4,20 @@ python:
   - "2.7"
   - "3.2"
   - "3.3"
+  - "3.4"
   - "pypy"
+  - "pypy3"
 # command to install dependencies, e.g. pip install -r requirements.txt --use-mirrors
 install:
-  - pip install pytz feedparser charade sqlalchemy --use-mirrors
+    - pip install -vr requirements.txt
 # command to run tests, e.g. python setup.py test
 script:
   - echo $TRAVIS_PYTHON_VERSION
   - python setup.py install
   - supybot-test test --plugins-dir=./build/lib*/supybot/plugins/ --no-network --disable-multiprocessing --exclude=./build/lib*/supybot/plugins/Scheduler --exclude=./build/lib*/supybot/plugins/Filter
+after_success:
+    - if [ "$TRAVIS_PYTHON_VERSION" = "3.4" ]; then bash .travis.runonce.bash;fi
+notifications:
+    email: false
+matrix:
+  fast_finish: true

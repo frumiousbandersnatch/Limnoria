@@ -41,57 +41,8 @@ import os.path
 import threading
 import collections
 
-import supybot.log as log
-import supybot.dbi as dbi
-import supybot.conf as conf
-import supybot.ircdb as ircdb
-import supybot.utils as utils
-import supybot.world as world
-from supybot.commands import *
-import supybot.ircutils as ircutils
-import supybot.callbacks as callbacks
-from supybot import commands
-
-## i think we don't need any of this with sqlite3
-#try:
-    ## We need to sweep away all that mx.* crap because our code doesn't account
-    ## for PySQLite's arbitrary use of it.  Whoever decided to change sqlite's
-    ## behavior based on whether or not that module is installed was a *CRACK*
-    ## **FIEND**, plain and simple.
-    #mxCrap = {}
-    #for (name, module) in sys.modules.items():
-        #if name.startswith('mx'):
-            #mxCrap[name] = module
-            #sys.modules.pop(name)
-    ## Now that the mx crap is gone, we can import sqlite.
-    #import sqlite3 as sqlite
-    ## And now we'll put it back, even though it sucks.
-    #sys.modules.update(mxCrap)
-    ## Just in case, we'll do this as well.  It doesn't seem to work fine by
-    ## itself, though, or else we'd just do this in the first place.
-    #sqlite.have_datetime = False
-    #Connection = sqlite.Connection
-    #class MyConnection(sqlite.Connection):
-        #def commit(self, *args, **kwargs):
-            #if self.autocommit:
-                #return
-            #else:
-                #Connection.commit(self, *args, **kwargs)
-
-        #def __del__(self):
-            #try:
-                #Connection.__del__(self)
-            #except AttributeError:
-                #pass
-            #except Exception, e:
-                #try:
-                    #log.exception('Uncaught exception in __del__:')
-                #except:
-                    #pass
-    #sqlite.Connection = MyConnection
-    ##del Connection.__del__
-#except ImportError:
-    #pass
+from .. import callbacks, conf, dbi, ircdb, ircutils, log, utils, world
+from ..commands import *
 
 try:
     import sqlite3
@@ -132,7 +83,7 @@ def DB(filename, types):
                 return types[type](fn, *args, **kwargs)
             except KeyError:
                 continue
-        raise NoSuitableDatabase, types.keys()
+        raise NoSuitableDatabase(types.keys())
     return MakeDB
 
 def makeChannelFilename(filename, channel=None, dirname=None):
@@ -240,15 +191,18 @@ class ChannelUserDictionary(collections.MutableMapping):
     def __init__(self):
         self.channels = ircutils.IrcDict()
 
-    def __getitem__(self, (channel, id)):
+    def __getitem__(self, key):
+        (channel, id) = key
         return self.channels[channel][id]
 
-    def __setitem__(self, (channel, id), v):
+    def __setitem__(self, key, v):
+        (channel, id) = key
         if channel not in self.channels:
             self.channels[channel] = self.IdDict()
         self.channels[channel][id] = v
 
-    def __delitem__(self, (channel, id)):
+    def __delitem__(self, key):
+        (channel, id) = key
         del self.channels[channel][id]
 
     def __iter__(self):
@@ -282,7 +236,7 @@ class ChannelUserDB(ChannelUserDictionary):
         self.filename = filename
         try:
             fd = open(self.filename)
-        except EnvironmentError, e:
+        except EnvironmentError as e:
             log.warning('Couldn\'t open %s: %s.', self.filename, e)
             return
         reader = csv.reader(fd)
@@ -300,11 +254,11 @@ class ChannelUserDB(ChannelUserDictionary):
                         pass
                     v = self.deserialize(channel, id, t)
                     self[channel, id] = v
-                except Exception, e:
+                except Exception as e:
                     log.warning('Invalid line #%s in %s.',
                                 lineno, self.__class__.__name__)
                     log.debug('Exception: %s', utils.exnToString(e))
-        except Exception, e: # This catches exceptions from csv.reader.
+        except Exception as e: # This catches exceptions from csv.reader.
             log.warning('Invalid line #%s in %s.',
                         lineno, self.__class__.__name__)
             log.debug('Exception: %s', utils.exnToString(e))
@@ -451,9 +405,8 @@ class ChannelIdDatabasePlugin(callbacks.Plugin):
             if opt == 'by':
                 predicates.append(lambda r, arg=arg: r.by == arg.id)
             elif opt == 'regexp':
-                predicates.append(lambda x: commands.regexp_wrapper(x.text, reobj=arg, 
-                        timeout=0.1, plugin_name = self.name(), fcn_name='search'))
-                #predicates.append(lambda r, arg=arg: arg.search(r.text))
+                predicates.append(lambda r: regexp_wrapper(r.text, reobj=arg,
+                        timeout=0.1, plugin_name=self.name(), fcn_name='search'))
         if glob:
             def globP(r, glob=glob.lower()):
                 return fnmatch.fnmatch(r.text.lower(), glob)
@@ -553,7 +506,7 @@ class PeriodicFileDownloader(object):
     periodicFiles = None
     def __init__(self):
         if self.periodicFiles is None:
-            raise ValueError, 'You must provide files to download'
+            raise ValueError('You must provide files to download')
         self.lastDownloaded = {}
         self.downloadedCounter = {}
         for filename in self.periodicFiles:
@@ -575,10 +528,10 @@ class PeriodicFileDownloader(object):
         try:
             try:
                 infd = utils.web.getUrlFd(url)
-            except IOError, e:
+            except IOError as e:
                 self.log.warning('Error downloading %s: %s', url, e)
                 return
-            except utils.web.Error, e:
+            except utils.web.Error as e:
                 self.log.warning('Error downloading %s: %s', url, e)
                 return
             confDir = conf.supybot.directories.data()

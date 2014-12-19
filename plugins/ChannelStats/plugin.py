@@ -135,7 +135,7 @@ class StatsDB(plugins.ChannelUserDB):
         return v.values()
 
     def deserialize(self, channel, id, L):
-        L = map(int, L)
+        L = list(map(int, L))
         if id == 'channelStats':
             return ChannelStat(*L)
         else:
@@ -164,6 +164,8 @@ class StatsDB(plugins.ChannelUserDB):
 
 filename = conf.supybot.directories.data.dirize('ChannelStats.db')
 class ChannelStats(callbacks.Plugin):
+    """This plugin keeps stats of the channel and returns them with
+    the command 'channelstats'."""
     noIgnore = True
     def __init__(self, irc):
         self.__parent = super(ChannelStats, self)
@@ -336,9 +338,9 @@ class ChannelStats(callbacks.Plugin):
                     v = eval(expr, e, e)
                 except ZeroDivisionError:
                     v = float('inf')
-                except NameError, e:
+                except NameError as e:
                     irc.errorInvalid(_('stat variable'), str(e).split()[1])
-                except Exception, e:
+                except Exception as e:
                     irc.error(utils.exnToString(e), Raise=True)
                 if id == 0:
                     users.append((v, irc.nick))
@@ -358,9 +360,11 @@ class ChannelStats(callbacks.Plugin):
         Returns the statistics for <channel>.  <channel> is only necessary if
         the message isn't sent on the channel itself.
         """
-        if msg.nick not in irc.state.channels[channel].users:
-            irc.error(format('You must be in %s to use this command.', channel))
-            return
+        if channel not in irc.state.channels:
+            irc.error(_('I am not in %s.') % channel, Raise=True)
+        elif msg.nick not in irc.state.channels[channel].users:
+            irc.error(_('You must be in %s to use this command.') % channel,
+                    Raise=True)
         try:
             channeldb = conf.supybot.databases.plugins.channelSpecific. \
                     getChannelLink(channel)

@@ -28,6 +28,7 @@
 # POSSIBILITY OF SUCH DAMAGE.
 ###
 
+import re
 import sys
 import types
 import codecs
@@ -38,6 +39,7 @@ import supybot.utils as utils
 from supybot.commands import *
 import supybot.commands as commands
 import supybot.plugins as plugins
+import supybot.commands as commands
 import supybot.ircutils as ircutils
 import supybot.callbacks as callbacks
 from supybot.i18n import PluginInternationalization, internationalizeDocstring
@@ -46,6 +48,7 @@ _ = PluginInternationalization('String')
 import multiprocessing
 
 class String(callbacks.Plugin):
+    """Provides useful commands for manipulating characters and strings."""
     @internationalizeDocstring
     def ord(self, irc, msg, args, letter):
         """<letter>
@@ -156,7 +159,7 @@ class String(callbacks.Plugin):
                       'it with some smaller inputs.'))
         else:
             irc.reply(str(utils.str.distance(s1, s2)))
-    levenshtein = wrap(levenshtein, ['something', 'text'])
+    levenshtein = thread(wrap(levenshtein, ['something', 'text']))
 
     @internationalizeDocstring
     def soundex(self, irc, msg, args, text, length):
@@ -200,14 +203,15 @@ class String(callbacks.Plugin):
         else:
             t = self.registryValue('re.timeout')
             try:
-                v = commands.process(f, text, timeout=t, pn=self.name(), cn='re')
+                v = process(f, text, timeout=t, pn=self.name(), cn='re')
                 irc.reply(v)
-            except commands.ProcessTimeoutError, e:
+            except commands.ProcessTimeoutError as e:
                 irc.error("ProcessTimeoutError: %s" % (e,))
+            except re.error as e:
+                irc.error(e.args[0])
     re = thread(wrap(re, [first('regexpMatcher', 'regexpReplacer'),
                    'text']))
 
-    @internationalizeDocstring
     def xor(self, irc, msg, args, password, text):
         """<password> <text>
 
@@ -216,7 +220,7 @@ class String(callbacks.Plugin):
         encryption.
         """
         chars = utils.iter.cycle(password)
-        ret = [chr(ord(c) ^ ord(chars.next())) for c in text]
+        ret = [chr(ord(c) ^ ord(next(chars))) for c in text]
         irc.reply(''.join(ret))
     xor = wrap(xor, ['something', 'text'])
 

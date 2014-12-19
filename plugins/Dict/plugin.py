@@ -43,6 +43,8 @@ import random
 from local import dictclient
 
 class Dict(callbacks.Plugin):
+    """This plugin provides a function to look up words from different
+    dictionaries."""
     threaded = True
     @internationalizeDocstring
     def dictionaries(self, irc, msg, args):
@@ -56,7 +58,7 @@ class Dict(callbacks.Plugin):
             dbs = list(conn.getdbdescs().keys())
             dbs.sort()
             irc.reply(format('%L', dbs))
-        except socket.error, e:
+        except socket.error as e:
             irc.error(utils.web.strError(e))
     dictionaries = wrap(dictionaries)
 
@@ -71,7 +73,7 @@ class Dict(callbacks.Plugin):
             conn = dictclient.Connection(server)
             dbs = conn.getdbdescs().keys()
             irc.reply(utils.iter.choice(dbs))
-        except socket.error, e:
+        except socket.error as e:
             irc.error(utils.web.strError(e))
     random = wrap(random)
 
@@ -85,7 +87,7 @@ class Dict(callbacks.Plugin):
         try:
             server = conf.supybot.plugins.Dict.server()
             conn = dictclient.Connection(server)
-        except socket.error, e:
+        except socket.error as e:
             irc.error(utils.web.strError(e), Raise=True)
         dbs = set(conn.getdbdescs())
         if words[0] in dbs:
@@ -130,7 +132,7 @@ class Dict(callbacks.Plugin):
     def synonym(self, irc, msg, args, words):
         """<word> [<word> ...]
 
-        Gets a random synonym from the Moby Thesaurus (moby-thes) database.
+        Gets a random synonym from the Moby Thesaurus (moby-thesaurus) database.
 
         If given many words, gets a random synonym for each of them.
 
@@ -139,10 +141,10 @@ class Dict(callbacks.Plugin):
         try:
             server = conf.supybot.plugins.Dict.server()
             conn = dictclient.Connection(server)
-        except socket.error, e:
+        except socket.error as e:
             irc.error(utils.web.strError(e), Raise=True)
 
-        dictionary = 'moby-thes'
+        dictionary = 'moby-thesaurus'
         response = []
         for word in words:
             definitions = conn.define(dictionary, word)

@@ -33,17 +33,10 @@ import time
 import random
 import base64
 
-import supybot.log as log
-import supybot.conf as conf
-import supybot.utils as utils
-import supybot.world as world
-import supybot.ircdb as ircdb
-import supybot.ircmsgs as ircmsgs
-import supybot.ircutils as ircutils
-
-from utils.str import rsplit
-from utils.iter import chain, cycle
-from utils.structures import queue, smallqueue, RingBuffer
+from . import conf, ircdb, ircmsgs, ircutils, log, utils, world
+from .utils.str import rsplit
+from .utils.iter import imap, chain, cycle
+from .utils.structures import queue, smallqueue, RingBuffer
 
 ###
 # The base class for a callback to be registered with an Irc object.  Shows
@@ -212,8 +205,9 @@ class IrcMsgQueue(object):
                msg in self.lowpriority or \
                msg in self.highpriority
 
-    def __nonzero__(self):
+    def __bool__(self):
         return bool(self.highpriority or self.normal or self.lowpriority)
+    __nonzero__ = __bool__
 
     def __len__(self):
         return len(self.highpriority)+len(self.lowpriority)+len(self.normal)
@@ -416,8 +410,8 @@ class IrcState(IrcCommandDispatcher):
         # msg.args = [nick, server, ircd-version, umodes, modes,
         #             modes that require arguments? (non-standard)]
         self.ircd = msg.args[2]
-        self.supported['umodes'] = msg.args[3]
-        self.supported['chanmodes'] = msg.args[4]
+        self.supported['umodes'] = frozenset(msg.args[3])
+        self.supported['chanmodes'] = frozenset(msg.args[4])
 
     _005converters = utils.InsensitivePreservingDict({
         'modes': int,
@@ -441,9 +435,9 @@ class IrcState(IrcCommandDispatcher):
             assert left[0] == '(', 'Odd PREFIX in 005: %s' % s
             left = left[1:]
             assert len(left) == len(right), 'Odd PREFIX in 005: %s' % s
-            return dict(zip(left, right))
+            return dict(list(zip(left, right)))
         else:
-            return dict(zip('ovh', s))
+            return dict(list(zip('ovh', s)))
     _005converters['prefix'] = _prefixParser
     del _prefixParser
     def _maxlistParser(s):
@@ -454,7 +448,7 @@ class IrcState(IrcCommandDispatcher):
             (mode, limit) = pair.split(':', 1)
             modes += mode
             limits += (int(limit),) * len(mode)
-        return dict(zip(modes, limits))
+        return dict(list(zip(modes, limits)))
     _005converters['maxlist'] = _maxlistParser
     del _maxlistParser
     def _maxbansParser(s):
@@ -467,7 +461,7 @@ class IrcState(IrcCommandDispatcher):
                 (mode, limit) = pair.split(':', 1)
                 modes += mode
                 limits += (int(limit),) * len(mode)
-            d = dict(zip(modes, limits))
+            d = dict(list(zip(modes, limits)))
             assert 'b' in d
             return d['b']
         else:
@@ -481,7 +475,7 @@ class IrcState(IrcCommandDispatcher):
                 converter = self._005converters.get(name, lambda x: x)
                 try:
                     self.supported[name] = converter(value)
-                except Exception, e:
+                except Exception as e:
                     log.exception('Uncaught exception in 005 converter:')
                     log.error('Name: %s, Converter: %s', name, converter)
             else:
@@ -489,13 +483,24 @@ class IrcState(IrcCommandDispatcher):
 
     def do352(self, irc, msg):
         # WHO reply.
+
         (nick, user, host) = (msg.args[5], msg.args[2], msg.args[3])
+        hostmask = '%s!%s@%s' % (nick, user, host)
+        self.nicksToHostmasks[nick] = hostmask
+
+    def do354(self, irc, msg):
+        # WHOX reply.
+
+        if len(msg.args) != 6 or msg.args[1] != '1':
+            return
+
+        (__, ___, user, host, nick, ___) = msg.args
         hostmask = '%s!%s@%s' % (nick, user, host)
         self.nicksToHostmasks[nick] = hostmask
 
     def do353(self, irc, msg):
         # NAMES reply.
-        (_, type, channel, names) = msg.args
+        (__, type, channel, names) = msg.args
         if channel not in self.channels:
             self.channels[channel] = ChannelState()
         c = self.channels[channel]
@@ -539,7 +544,11 @@ class IrcState(IrcCommandDispatcher):
 
     def do324(self, irc, msg):
         channel = msg.args[1]
-        chan = self.channels[channel]
+        try:
+            chan = self.channels[channel]
+        except KeyError:
+            chan = ChannelState()
+            self.channels[channel] = chan
         for (mode, value) in ircutils.separateModes(msg.args[2:]):
             modeChar = mode[1]
             if mode[0] == '+' and mode[1] not in 'ovh':
@@ -550,7 +559,11 @@ class IrcState(IrcCommandDispatcher):
     def do329(self, irc, msg):
         # This is the last part of an empty mode.
         channel = msg.args[1]
-        chan = self.channels[channel]
+        try:
+            chan = self.channels[channel]
+        except KeyError:
+            chan = ChannelState()
+            self.channels[channel] = chan
         chan.created = int(msg.args[2])
 
     def doPart(self, irc, msg):
@@ -893,12 +906,12 @@ class Irc(IrcCommandDispatcher):
 
     def _setNonResettingVariables(self):
         # Configuration stuff.
-        self.nick = conf.supybot.nick()
-        network_nick = conf.supybot.networks.get(self.network).nick()
-        if network_nick != '':
-            self.nick = network_nick
-        self.user = conf.supybot.user()
-        self.ident = conf.supybot.ident()
+        def get_value(name):
+            return getattr(conf.supybot.networks.get(self.network), name)() or \
+                getattr(conf.supybot, name)()
+        self.nick = get_value('nick')
+        self.user = get_value('user')
+        self.ident = get_value('ident')
         self.alternateNicks = conf.supybot.nick.alternates()[:]
         self.password = conf.supybot.networks.get(self.network).password()
         self.sasl_username = \
@@ -925,41 +938,106 @@ class Irc(IrcCommandDispatcher):
         if self.zombie:
             self.driver.die()
             self._reallyDie()
-        else:
-            if self.sasl_password:
-                if not self.sasl_username:
-                    log.error('SASL username is not set, unable to identify.')
-                else:
-                    auth_string = base64.b64encode('\x00'.join([
-                        self.sasl_username,
-                        self.sasl_username,
-                        self.sasl_password
-                    ]).encode('utf-8')).decode('utf-8')
-                    log.debug('Sending CAP REQ command, requesting capability \'sasl\'.')
-                    self.queueMsg(ircmsgs.IrcMsg(command="CAP", args=('REQ', 'sasl')))
-                    log.debug('Sending AUTHENTICATE command, using mechanism PLAIN.')
-                    self.queueMsg(ircmsgs.IrcMsg(command="AUTHENTICATE", args=('PLAIN',)))
-                    log.info('Sending AUTHENTICATE command, not logging the password.')
-                    self.queueMsg(ircmsgs.IrcMsg(command="AUTHENTICATE", args=(auth_string,)))
-            if self.password:
-                log.info('Sending PASS command, not logging the password.')
-                self.queueMsg(ircmsgs.password(self.password))
-            log.debug('Queuing NICK command, nick is %s.', self.nick)
-            self.queueMsg(ircmsgs.nick(self.nick))
-            log.debug('Queuing USER command, ident is %s, user is %s.',
-                     self.ident, self.user)
-            self.queueMsg(ircmsgs.user(self.ident, self.user))
+
+            return
+
+        self.sasl = None
+
+        if (conf.supybot.networks.get(self.network).certfile() or
+                conf.supybot.protocols.irc.certfile()):
+            self.sasl = 'external'
+        elif self.sasl_username and self.sasl_password:
+            self.sasl = 'plain'
+
+        if self.sasl:
+            self.queueMsg(ircmsgs.IrcMsg(command='CAP', args=('REQ', 'sasl')))
+
+        self.queueMsg(ircmsgs.IrcMsg(command='CAP', args=('REQ', 'account-notify')))
+        self.queueMsg(ircmsgs.IrcMsg(command='CAP', args=('REQ', 'extended-join')))
+
+        if not self.sasl:
+            self.queueMsg(ircmsgs.IrcMsg(command='CAP', args=('END',)))
+
+        if self.password:
+            log.info('%s: Queuing PASS command, not logging the password.',
+                     self.network)
+
+            self.queueMsg(ircmsgs.password(self.password))
+
+        log.debug('%s: Queuing NICK command, nick is %s.',
+                  self.network, self.nick)
+
+        self.queueMsg(ircmsgs.nick(self.nick))
+
+        log.debug('%s: Queuing USER command, ident is %s, user is %s.',
+                  self.network, self.ident, self.user)
+
+        self.queueMsg(ircmsgs.user(self.ident, self.user))
+
+    def doAuthenticate(self, msg):
+        if len(msg.args) == 1 and msg.args[0] == '+':
+            log.info('%s: Authenticating using SASL.', self.network)
+
+            if self.sasl == 'external':
+                authstring = '+'
+            elif self.sasl == 'plain':
+                authstring = base64.b64encode('\0'.join([
+                    self.sasl_username,
+                    self.sasl_username,
+                    self.sasl_password
+                ]).encode('utf-8')).decode('utf-8')
+
+            self.queueMsg(ircmsgs.IrcMsg(command='AUTHENTICATE', args=(authstring,)))
+
+    def doCap(self, msg):
+        if len(msg.args) == 3:
+            for cap in msg.args[2].split(' '):
+                if msg.args[1] == 'ACK':
+                    log.info('%s: Server acknowledged capability %r',
+                             self.network, cap)
+
+                    if cap == 'sasl':
+                        self.queueMsg(ircmsgs.IrcMsg(
+                            command='AUTHENTICATE',
+                            args=(self.sasl.upper(),)))
+                elif msg.args[1] == 'NAK':
+                    log.warning('%s: Server refused capability %r',
+                                self.network, cap)
 
     def do903(self, msg):
-        log.info('%s: SASL authentication successful' % self.network)
-        log.debug('Sending CAP END command.')
-        self.queueMsg(ircmsgs.IrcMsg(command="CAP", args=('END',)))
+        log.info('%s: SASL authentication successful', self.network)
+        self.queueMsg(ircmsgs.IrcMsg(command='CAP', args=('END',)))
 
     def do904(self, msg):
-        log.warning('%s: SASL authentication failed' % self.network)
-        log.debug('Aborting authentication.')
-        log.debug('Sending CAP END command.')
-        self.queueMsg(ircmsgs.IrcMsg(command="CAP", args=('END',)))
+        if (self.sasl == 'external' and self.sasl_username and
+                self.sasl_password):
+            log.info('%s: SASL EXTERNAL failed, trying PLAIN.', self.network)
+
+            self.sasl = 'plain'
+
+            self.queueMsg(ircmsgs.IrcMsg(
+                command='AUTHENTICATE', args=(self.sasl.upper(),)))
+        else:
+            log.warning('%s: SASL authentication failed', self.network)
+            self.queueMsg(ircmsgs.IrcMsg(command='CAP', args=('END',)))
+
+    def do905(self, msg):
+        log.warning('%s: SASL authentication failed because the username or '
+                    'password is too long.', self.network)
+        self.queueMsg(ircmsgs.IrcMsg(command='CAP', args=('END',)))
+
+    def do906(self, msg):
+        log.warning('%s: SASL authentication aborted', self.network)
+        self.queueMsg(ircmsgs.IrcMsg(command='CAP', args=('END',)))
+
+    def do907(self, msg):
+        log.warning('%s: Attempted SASL authentication when we were already '
+                    'authenticated.', self.network)
+        self.queueMsg(ircmsgs.IrcMsg(command='CAP', args=('END',)))
+
+    def do908(self, msg):
+        log.info('%s: Supported SASL mechanisms: %s',
+                 self.network, msg.args[1])
 
     def _getNextNick(self):
         if self.alternateNicks:
@@ -1007,13 +1085,10 @@ class Irc(IrcCommandDispatcher):
         if umodes == '':
             umodes = conf.supybot.protocols.irc.umodes()
         supported = self.state.supported.get('umodes')
+        if supported:
+            acceptedchars = supported.union('+-')
+            umodes = ''.join([m for m in umodes if m in acceptedchars])
         if umodes:
-            addSub = '+'
-            if umodes[0] in '+-':
-                (addSub, umodes) = (umodes[0], umodes[1:])
-            if supported:
-                umodes = ''.join([m for m in umodes if m in supported])
-            umodes = ''.join([addSub, umodes])
             log.info('Sending user modes to %s: %s', self.network, umodes)
             self.sendMsg(ircmsgs.mode(self.nick, umodes))
     do377 = do422 = do376
@@ -1032,7 +1107,7 @@ class Irc(IrcCommandDispatcher):
     def doJoin(self, msg):
         if msg.nick == self.nick:
             channel = msg.args[0]
-            self.queueMsg(ircmsgs.who(channel)) # Ends with 315.
+            self.queueMsg(ircmsgs.who(channel, args=('%tuhna,1',))) # Ends with 315.
             self.queueMsg(ircmsgs.mode(channel)) # Ends with 329.
             for channel in msg.args[0].split(','):
                 self.queueMsg(ircmsgs.mode(channel, '+b'))

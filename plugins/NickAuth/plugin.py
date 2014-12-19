@@ -44,7 +44,7 @@ _ = PluginInternationalization('NickAuth')
 
 @internationalizeDocstring
 class NickAuth(callbacks.Plugin):
-    """Support authentication based on nicks and network services."""
+    """Supports authentication based on nicks and network services."""
     def __init__(self, irc):
         super(NickAuth, self).__init__(irc)
         self._requests = {}
@@ -94,7 +94,7 @@ class NickAuth(callbacks.Plugin):
             """
             network = network.network or irc.network
             user = user or ircdb.users.getUser(msg.prefix)
-            self._check_auth(user, irc, msg)
+            self._check_auth(irc, msg, user)
             try:
                 user.removeNick(network, nick)
             except KeyError:
@@ -126,8 +126,12 @@ class NickAuth(callbacks.Plugin):
                 else:
                     raise KeyError
             except KeyError:
-                irc.error(_('You have no recognized nick on this '
-                        'network.'), Raise=True)
+                if user == ircdb.users.getUser(msg.prefix):
+                    irc.error(_('You have no recognized nick on this '
+                            'network.'), Raise=True)
+                else:
+                    irc.error(_('%s has no recognized nick on this '
+                            'network.') % user, Raise=True)
         list = wrap(list, [optional('networkIrc'),
                            optional('otherUser')])
 
@@ -157,11 +161,72 @@ class NickAuth(callbacks.Plugin):
         if not user:
             user = ircdb.users.getUserFromNick(irc.network, theirnick)
         if user:
-            user.addAuth(prefix)
+            try:
+                user.addAuth(prefix)
+            except ValueError:
+                irc.error(_('Your secure flag is true and your hostmask '
+                          'doesn\'t match any of your known hostmasks.'),
+                          Raise=True)
             ircdb.users.setUser(user, flush=False)
             irc.reply(_('You are now authenticated as %s.') % user.name)
         else:
             irc.error(_('No user has this nick on this network.'))
+
+    def doAccount(self, irc, msg):
+        account = msg.args[0]
+        user = ircdb.users.getUserFromNick(irc.network, account)
+
+        if not user:
+            try:
+                user = ircdb.users.getUser(msg.prefix)
+            except KeyError:
+                user = None
+
+        if user:
+            if account == '*':
+                user.clearAuth()
+            else:
+                user.addAuth(msg.prefix)
+                ircdb.users.setUser(user, flush=False)
+
+
+    def doJoin(self, irc, msg):
+        if len(msg.args) < 2:
+            # extended-join is not supported
+            return
+
+        account = msg.args[1]
+        user = ircdb.users.getUserFromNick(irc.network, account)
+
+        if not user:
+            try:
+                user = ircdb.users.getUser(msg.prefix)
+            except KeyError:
+                user = None
+
+        if user:
+            if account != '*':
+                user.addAuth(msg.prefix)
+                ircdb.users.setUser(user, flush=False)
+
+    def do354(self, irc, msg):
+        if len(msg.args) != 6 or msg.args[1] != '1':
+            return
+
+        (__, ___, ident, host, nick, account) = msg.args
+        prefix = '%s!%s@%s' % (nick, ident, host)
+        user = ircdb.users.getUserFromNick(irc.network, account)
+
+        if not user:
+            try:
+                user = ircdb.users.getUser(prefix)
+            except KeyError:
+                user = None
+
+        if user:
+            if account != '0':
+                user.addAuth(prefix)
+                ircdb.users.setUser(user, flush=False)
 
 
 Class = NickAuth

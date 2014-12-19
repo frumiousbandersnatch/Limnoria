@@ -34,7 +34,7 @@ _ = PluginInternationalization('AutoMode')
 
 def configure(advanced):
     # This will be called by supybot to configure this module.  advanced is
-    # a bool that specifies whether the user identified himself as an advanced
+    # a bool that specifies whether the user identified themself as an advanced
     # user or not.  You should effect your configuration by manipulating the
     # registry as appropriate.
     from supybot.questions import expect, anything, something, yn
@@ -46,22 +46,26 @@ conf.registerChannelValue(AutoMode, 'enable',
     registry.Boolean(True, _("""Determines whether this plugin is enabled.
     """)))
 conf.registerGlobalValue(AutoMode, 'owner',
-    registry.Boolean(True, _("""Determines whether this plugin will automode
+    registry.Boolean(False, _("""Determines whether this plugin will automode
     owners even if they don't have op/halfop/voice/whatever capability.""")))
+conf.registerChannelValue(AutoMode, 'alternativeCapabilities',
+    registry.Boolean(False, _("""Determines whether the bot will
+    check for 'alternative capabilities' (ie. autoop, autohalfop,
+    autovoice) in addition to/instead of classic ones.""")))
 conf.registerChannelValue(AutoMode, 'fallthrough',
-    registry.Boolean(False, _("""Determines whether the bot will "fall
+    registry.Boolean(True, _("""Determines whether the bot will "fall
     through" to halfop/voicing when auto-opping is turned off but
     auto-halfopping/voicing are turned on.""")))
 conf.registerChannelValue(AutoMode, 'op',
-    registry.Boolean(True, _("""Determines whether the bot will automatically
+    registry.Boolean(False, _("""Determines whether the bot will automatically
     op people with the <channel>,op capability when they join the channel.
     """)))
 conf.registerChannelValue(AutoMode, 'halfop',
-    registry.Boolean(True, _("""Determines whether the bot will automatically
+    registry.Boolean(False, _("""Determines whether the bot will automatically
     halfop people with the <channel>,halfop capability when they join the
     channel.""")))
 conf.registerChannelValue(AutoMode, 'voice',
-    registry.Boolean(True, _("""Determines whether the bot will automatically
+    registry.Boolean(False, _("""Determines whether the bot will automatically
     voice people with the <channel>,voice capability when they join the
     channel.""")))
 conf.registerChannelValue(AutoMode, 'ban',

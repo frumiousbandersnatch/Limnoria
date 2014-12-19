@@ -95,7 +95,7 @@ class IrcMsgQueueTestCase(SupyTestCase):
         q.enqueue(self.msg)
         try:
             repr(q)
-        except Exception, e:
+        except Exception as e:
             self.fail('repr(q) raised an exception: %s' %
                       utils.exnToString(e))
 
@@ -289,9 +289,10 @@ class IrcStateTestCase(SupyTestCase):
     def testSupportedUmodes(self):
         state = irclib.IrcState()
         state.addMsg(self.irc, ircmsgs.IrcMsg(':coulomb.oftc.net 004 testnick coulomb.oftc.net hybrid-7.2.2+oftc1.6.8 CDGPRSabcdfgiklnorsuwxyz biklmnopstveI bkloveI'))
-        self.assertEqual(state.supported['umodes'], 'CDGPRSabcdfgiklnorsuwxyz')
+        self.assertEqual(state.supported['umodes'],
+                frozenset('CDGPRSabcdfgiklnorsuwxyz'))
         self.assertEqual(state.supported['chanmodes'],
-                         'biklmnopstveI')
+                         frozenset('biklmnopstveI'))
 
     def testEmptyTopic(self):
         state = irclib.IrcState()
@@ -382,6 +383,12 @@ class IrcTestCase(SupyTestCase):
         m = self.irc.takeMsg()
         self.failUnless(m.command == 'NICK', 'Expected NICK, got %r.' % m)
         m = self.irc.takeMsg()
+        self.failUnless(m.command == 'CAP', 'Expected CAP, got %r.' % m)
+        m = self.irc.takeMsg()
+        self.failUnless(m.command == 'CAP', 'Expected CAP, got %r.' % m)
+        m = self.irc.takeMsg()
+        self.failUnless(m.command == 'CAP', 'Expected CAP, got %r.' % m)
+        m = self.irc.takeMsg()
         self.failUnless(m.command == 'USER', 'Expected USER, got %r.' % m)
 
     def testPingResponse(self):
@@ -466,7 +473,7 @@ class IrcCallbackTestCase(SupyTestCase):
         doCommandCatcher = DoCommandCatcher()
         for msg in msgs:
             doCommandCatcher(self.irc, msg)
-        commands = map(makeCommand, msgs)
+        commands = list(map(makeCommand, msgs))
         self.assertEqual(doCommandCatcher.L, commands)
 
     def testFirstCommands(self):
@@ -478,7 +485,11 @@ class IrcCallbackTestCase(SupyTestCase):
             conf.supybot.nick.setValue(nick)
             user = 'user any user'
             conf.supybot.user.setValue(user)
-            expected = [ircmsgs.nick(nick), ircmsgs.user('limnoria', user)]
+            expected = [ircmsgs.nick(nick),
+                        ircmsgs.IrcMsg(command='CAP', args=('REQ', 'account-notify')),
+                        ircmsgs.IrcMsg(command='CAP', args=('REQ', 'extended-join')),
+                        ircmsgs.IrcMsg(command='CAP', args=('END',)),
+                        ircmsgs.user('limnoria', user)]
             irc = irclib.Irc('test')
             msgs = [irc.takeMsg()]
             while msgs[-1] != None:

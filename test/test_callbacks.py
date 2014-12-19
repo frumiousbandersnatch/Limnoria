@@ -72,9 +72,13 @@ class TokenizerTestCase(SupyTestCase):
         self.assertEqual(tokenize('foo "bar baz" quux'),
                          ['foo', 'bar baz', 'quux'])
 
-    def testUnicode(self):
-        self.assertEqual(tokenize(u'好'), [u'好'])
-        self.assertEqual(tokenize(u'"好"'), [u'好'])
+    _testUnicode = """
+def testUnicode(self):
+    self.assertEqual(tokenize(u'好'), [u'好'])
+    self.assertEqual(tokenize(u'"好"'), [u'好'])"""
+    if sys.version_info[0] >= 3:
+        _testUnicode = _testUnicode.replace("u'", "'")
+    exec(_testUnicode)
 
     def testNesting(self):
         self.assertEqual(tokenize('[]'), [[]])
@@ -237,9 +241,9 @@ class FunctionsTestCase(SupyTestCase):
         prefix = 'foo!bar@baz'
         channelMsg = ircmsgs.privmsg('#foo', 'bar baz', prefix=prefix)
         nonChannelMsg = ircmsgs.privmsg('supybot', 'bar baz', prefix=prefix)
-        self.assertEqual(ircmsgs.privmsg(nonChannelMsg.nick, 'foo'),
+        self.assertEqual(ircmsgs.notice(nonChannelMsg.nick, 'foo'),
                          callbacks.reply(channelMsg, 'foo', private=True))
-        self.assertEqual(ircmsgs.privmsg(nonChannelMsg.nick, 'foo'),
+        self.assertEqual(ircmsgs.notice(nonChannelMsg.nick, 'foo'),
                          callbacks.reply(nonChannelMsg, 'foo'))
         self.assertEqual(ircmsgs.privmsg(channelMsg.args[0],
                                          '%s: foo' % channelMsg.nick),
@@ -257,7 +261,7 @@ class FunctionsTestCase(SupyTestCase):
         self.assertEqual(callbacks.reply(msg, 'blah', to='blah'),
                          ircmsgs.privmsg('#foo', 'blah: blah'))
         self.assertEqual(callbacks.reply(msg, 'blah', to='blah', private=True),
-                         ircmsgs.privmsg('blah', 'blah'))
+                         ircmsgs.notice('blah', 'blah'))
 
     def testTokenize(self):
         self.assertEqual(callbacks.tokenize(''), [])
@@ -433,6 +437,8 @@ class PrivmsgTestCase(ChannelPluginTestCase):
         self.assertResponse('secondcmd', 'bar')
         self.assertResponse('first firstcmd', 'foo')
         self.assertResponse('second secondcmd', 'bar')
+        self.assertRegexp('first first firstcmd',
+                'there is no command named "first" in it')
 
     def testAmbiguousError(self):
         self.irc.addCallback(self.First(self.irc))
@@ -513,7 +519,7 @@ class PrivmsgTestCase(ChannelPluginTestCase):
     class BadInvalidCommand(callbacks.Plugin):
         def invalidCommand(self, irc, msg, tokens):
             s = 'This shouldn\'t keep Misc.invalidCommand from being called'
-            raise Exception, s
+            raise Exception(s)
 
     def testBadInvalidCommandDoesNotKillAll(self):
         try:
@@ -558,6 +564,9 @@ class SourceNestedPluginTestCase(PluginTestCase):
             """
             irc.reply('f')
 
+        def empty(self, irc, msg, args):
+            pass
+
         class g(callbacks.Commands):
             def h(self, irc, msg, args):
                 """takes no arguments
@@ -596,6 +605,7 @@ class SourceNestedPluginTestCase(PluginTestCase):
         self.assertResponse('e g h', 'h')
         self.assertResponse('e g i j', 'j')
         self.assertHelp('help f')
+        self.assertHelp('help empty')
         self.assertHelp('help same')
         self.assertHelp('help e g h')
         self.assertHelp('help e g i j')

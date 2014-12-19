@@ -38,6 +38,7 @@ started = time.time()
 
 import supybot
 import logging
+import traceback
 
 # We need to do this before we import conf.
 if not os.path.exists('test-conf'):
@@ -151,17 +152,15 @@ if __name__ == '__main__':
                       help='Disables multiprocessing stuff.')
     (options, args) = parser.parse_args()
 
-    conf.disableMultiprocessing = options.disableMultiprocessing
+    world.disableMultiprocessing = options.disableMultiprocessing
 
     # This must go before checking for args, of course.
     for pluginDir in options.pluginsDirs:
         for name in glob.glob(os.path.join(pluginDir, '*')):
             #print '***', name
-            print(repr(name))
             if not any(map(lambda x:name in x,
                            map(glob.glob, options.excludePlugins))) and \
                     os.path.isdir(name):
-                print('foo')
                 args.append(name)
 
     if not args:
@@ -200,7 +199,8 @@ if __name__ == '__main__':
         try:
             pluginModule = plugin.loadPluginModule(pluginName)
         except (ImportError, callbacks.Error) as e:
-            sys.stderr.write('Failed to load plugin %s: %s\n' % (pluginName,e))
+            sys.stderr.write('Failed to load plugin %s:' % pluginName)
+            traceback.print_exc()
             sys.stderr.write('(pluginDirs: %s)\n' %
                              conf.supybot.directories.plugins())
             continue

@@ -32,11 +32,9 @@ import sys
 import imp
 import os.path
 import linecache
+import re
 
-import supybot.log as log
-import supybot.conf as conf
-import supybot.registry as registry
-import supybot.callbacks as callbacks
+from . import callbacks, conf, log, registry
 
 installDir = os.path.dirname(sys.modules[__name__].__file__)
 _pluginsDir = os.path.join(installDir, 'plugins')
@@ -55,6 +53,13 @@ def loadPluginModule(name, ignoreDeprecation=False):
         except EnvironmentError: # OSError, IOError superclass.
             log.warning('Invalid plugin directory: %s; removing.', dir)
             conf.supybot.directories.plugins().remove(dir)
+    if name not in files:
+        search = lambda x: re.search(r'(?i)^%s$' % (name,), x)
+        matched_names = list(filter(search, files))
+        if len(matched_names) == 1:
+            name = matched_names[0]
+        else:
+            raise ImportError(name)
     moduleInfo = imp.find_module(name, pluginDirs)
     try:
         module = imp.load_module(name, *moduleInfo)
@@ -69,22 +74,43 @@ def loadPluginModule(name, ignoreDeprecation=False):
         if ignoreDeprecation:
             log.warning('Deprecated plugin loaded: %s', name)
         else:
-            raise Deprecated, format('Attempted to load deprecated plugin %s',
-                                     name)
+            raise Deprecated(format('Attempted to load deprecated plugin %s',
+                                     name))
     if module.__name__ in sys.modules:
         sys.modules[module.__name__] = module
     linecache.checkcache()
     return module
 
+def renameCommand(cb, name, newName):
+    assert not hasattr(cb, newName), 'Cannot rename over existing attributes.'
+    assert newName == callbacks.canonicalName(newName), \
+           'newName must already be normalized.'
+    if name != newName:
+        method = getattr(cb.__class__, name)
+        setattr(cb.__class__, newName, method)
+        delattr(cb.__class__, name)
+
+def registerRename(plugin, command=None, newName=None):
+    g = conf.registerGlobalValue(conf.supybot.commands.renames, plugin,
+            registry.SpaceSeparatedSetOfStrings([], """Determines what commands
+            in this plugin are to be renamed."""))
+    if command is not None:
+        g().add(command)
+        v = conf.registerGlobalValue(g, command, registry.String('', ''))
+        if newName is not None:
+            v.setValue(newName) # In case it was already registered.
+        return v
+    else:
+        return g
+
 def loadPluginClass(irc, module, register=None):
     """Loads the plugin Class from the given module into the given Irc."""
     try:
         cb = module.Class(irc)
-    except TypeError, e:
+    except TypeError as e:
         s = str(e)
         if '2 given' in s and '__init__' in s:
-            raise callbacks.Error, \
-                  'In our switch from CVS to Darcs (after 0.80.1), we ' \
+            raise callbacks.Error('In our switch from CVS to Darcs (after 0.80.1), we ' \
                   'changed the __init__ for callbacks.Privmsg* to also ' \
                   'accept an irc argument.  This plugin (%s) is overriding ' \
                   'its __init__ method and needs to update its prototype ' \
@@ -93,17 +119,16 @@ def loadPluginClass(irc, module, register=None):
                   'parent\'s __init__. Another possible cause: the code in ' \
                   'your __init__ raised a TypeError when calling a function ' \
                   'or creating an object, which doesn\'t take 2 arguments.' %\
-                  module.__name__
+                  module.__name__)
         else:
             raise
-    except AttributeError, e:
+    except AttributeError as e:
         if 'Class' in str(e):
-            raise callbacks.Error, \
-                  'This plugin module doesn\'t have a "Class" ' \
+            raise callbacks.Error('This plugin module doesn\'t have a "Class" ' \
                   'attribute to specify which plugin should be ' \
                   'instantiated.  If you didn\'t write this ' \
                   'plugin, but received it with Supybot, file ' \
-                  'a bug with us about this error.'
+                  'a bug with us about this error.')
         else:
             raise
     cb.classModule = module
@@ -115,7 +140,8 @@ def loadPluginClass(irc, module, register=None):
     assert not irc.getCallback(plugin), \
            'There is already a %r plugin registered.' % plugin
     try:
-        renames = []#XXX registerRename(plugin)()
+        v = registerRename(plugin)
+        renames = conf.supybot.commands.renames.get(plugin)()
         if renames:
             for command in renames:
                 v = registerRename(plugin, command)
@@ -124,7 +150,7 @@ def loadPluginClass(irc, module, register=None):
                 renameCommand(cb, command, newName)
         else:
             conf.supybot.commands.renames.unregister(plugin)
-    except registry.NonExistentRegistryEntry, e:
+    except registry.NonExistentRegistryEntry as e:
         pass # The plugin isn't there.
     irc.addCallback(cb)
     return cb

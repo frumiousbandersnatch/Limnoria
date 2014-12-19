@@ -40,7 +40,8 @@ from supybot.i18n import PluginInternationalization, internationalizeDocstring
 _ = PluginInternationalization('Internet')
 
 class Internet(callbacks.Plugin):
-    """Add the help for "@help Internet" here."""
+    """Provides commands to query DNS, search WHOIS databases,
+    and convert IPs to hex."""
     threaded = True
     @internationalizeDocstring
     def dns(self, irc, msg, args, host):
@@ -56,8 +57,15 @@ class Internet(callbacks.Plugin):
                 irc.reply(hostname)
         else:
             try:
-                ip = socket.getaddrinfo(host, None)[0][4][0]
-                irc.reply(ip)
+                ips = socket.getaddrinfo(host, None)
+                ips = map(lambda x:x[4][0], ips)
+                ordered_unique_ips = []
+                unique_ips = set()
+                for ip in ips:
+                    if ip not in unique_ips:
+                        ordered_unique_ips.append(ip)
+                        unique_ips.add(ip)
+                irc.reply(format('%L', ordered_unique_ips))
             except socket.error:
                 irc.reply(_('Host not found.'))
     dns = wrap(dns, ['something'])
@@ -82,7 +90,7 @@ class Internet(callbacks.Plugin):
         try:
             sock = utils.net.getSocket('%s.whois-servers.net' % usertld)
             sock.connect(('%s.whois-servers.net' % usertld, 43))
-        except socket.error, e:
+        except socket.error as e:
             irc.error(str(e))
             return
         sock.settimeout(5)
@@ -100,7 +108,7 @@ class Internet(callbacks.Plugin):
             pass
         server = registrar = updated = created = expires = status = ''
         for line in s.splitlines():
-            line = line.decode('ascii').strip()
+            line = line.decode('utf8').strip()
             if not line or ':' not in line:
                 continue
             if not server and any(line.startswith, self._domain):
@@ -130,7 +138,7 @@ class Internet(callbacks.Plugin):
             status = 'unknown'
         try:
             t = telnetlib.Telnet('whois.pir.org', 43)
-        except socket.error, e:
+        except socket.error as e:
             irc.error(str(e))
             return
         t.write(b'registrar ')

@@ -35,7 +35,7 @@ _ = PluginInternationalization('Protector')
 
 def configure(advanced):
     # This will be called by supybot to configure this module.  advanced is
-    # a bool that specifies whether the user identified himself as an advanced
+    # a bool that specifies whether the user identified themself as an advanced
     # user or not.  You should effect your configuration by manipulating the
     # registry as appropriate.
     from supybot.questions import expect, anything, something, yn
@@ -44,7 +44,7 @@ def configure(advanced):
 
 Protector = conf.registerPlugin('Protector')
 conf.registerChannelValue(Protector, 'enable',
-    registry.Boolean(True, _("""Determines whether this plugin is enabled in a
+    registry.Boolean(False, _("""Determines whether this plugin is enabled in a
     given channel.""")))
 
 class ImmuneNicks(conf.ValidNicks):

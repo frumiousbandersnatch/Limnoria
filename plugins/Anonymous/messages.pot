@@ -5,7 +5,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
-"POT-Creation-Date: 2011-06-09 18:26+CEST\n"
+"POT-Creation-Date: 2014-08-01 19:48+EEST\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -42,7 +42,7 @@ msgid ""
 "    messages to other users."
 msgstr ""
 
-#: plugin.py:40
+#: plugin.py:41
 #, docstring
 msgid ""
 "This plugin allows users to act through the bot anonymously.  The 'do'\n"
@@ -58,33 +58,43 @@ msgid ""
 "    "
 msgstr ""
 
-#: plugin.py:64
+#: plugin.py:65
 msgid "You must be in %s to %q in there."
 msgstr ""
 
-#: plugin.py:68
+#: plugin.py:69
 msgid "I'm lobotomized in %s."
 msgstr ""
 
-#: plugin.py:71
+#: plugin.py:72
 msgid "That channel has set its capabilities so as to disallow the use of this plugin."
 msgstr ""
 
-#: plugin.py:74
+#: plugin.py:75
 msgid "%q cannot be used to send private messages."
 msgstr ""
 
-#: plugin.py:80
+#: plugin.py:81
 #, docstring
 msgid ""
-"<channel|nick> <text>\n"
+"<channel> <text>\n"
 "\n"
-"        Sends <text> to <channel|nick>.  Can only send to <nick> if\n"
+"        Sends <text> to <channel>.  Can only send to <nick> if\n"
 "        supybot.plugins.Anonymous.allowPrivateTarget is True.\n"
 "        "
 msgstr ""
 
 #: plugin.py:94
+#, docstring
+msgid ""
+"<nick> <text>\n"
+"\n"
+"        Sends <text> to <nick>.  Can only be used if\n"
+"        supybot.plugins.Anonymous.allowPrivateTarget is True.\n"
+"        "
+msgstr ""
+
+#: plugin.py:108
 #, docstring
 msgid ""
 "<channel> <action>\n"

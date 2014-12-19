@@ -35,7 +35,7 @@ _ = PluginInternationalization('Factoids')
 
 def configure(advanced):
     # This will be called by supybot to configure this module.  advanced is
-    # a bool that specifies whether the user identified himself as an advanced
+    # a bool that specifies whether the user identified themself as an advanced
     # user or not.  You should effect your configuration by manipulating the
     # registry as appropriate.
     from supybot.questions import expect, anything, something, yn
@@ -59,9 +59,9 @@ conf.registerChannelValue(Factoids, 'requireVoice',
     registry.Boolean(False, _("""Only allows a user with voice or above on a
     channel to use the command.""")))
 conf.registerChannelValue(Factoids, 'learnSeparator',
-    registry.String('as', _("""Determines what separator must be used in the
-    learn command.  Defaults to 'as' -- learn <key> as <value>.  Users might
-    feel more comfortable with 'is' or something else, so it's
+    registry.String('is', _("""Determines what separator must be used in 
+    the learn command.  Defaults to 'is' -- learn <key> is <value>.  
+    Users might want to change this to something else, so it's
     configurable.""")))
 conf.registerChannelValue(Factoids, 'showFactoidIfOnlyOneMatch',
     registry.Boolean(True, _("""Determines whether the bot will reply with the
@@ -77,7 +77,7 @@ conf.registerChannelValue(Factoids, 'replyApproximateSearchKeys',
     several approximate matching algorithms and return a list of matching keys,
     before giving up.""")))
 conf.registerChannelValue(Factoids, 'format',
-    FactoidFormat(_('$key could be $value.'), _("""Determines the format of
+    FactoidFormat(_('$value'), _("""Determines the format of
     the response given when a factoid's value is requested.  All the standard
     substitutes apply, in addition to "$key" for the factoid's key and "$value"
     for the factoid's value.""")))

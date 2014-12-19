@@ -30,7 +30,7 @@
 
 import re
 import random
-from itertools import imap
+
 
 import supybot.utils as utils
 from supybot.commands import *
@@ -42,6 +42,8 @@ _ = PluginInternationalization('Games')
 
 
 class Games(callbacks.Plugin):
+    """This plugin provides some small games like (Russian) roulette,
+    eightball, monologue, coin and dice."""
     @internationalizeDocstring
     def flip(self, irc, msg, args):
         """takes no arguments
@@ -62,7 +64,7 @@ class Games(callbacks.Plugin):
         For example, 2d6 will roll 2 six-sided dice; 10d10 will roll 10
         ten-sided dice.
         """
-        (dice, sides) = imap(int, m.groups())
+        (dice, sides) = list(map(int, m.groups()))
         if dice > 1000:
             irc.error(_('You can\'t roll more than 1000 dice.'))
         elif sides > 100:

@@ -36,6 +36,8 @@ from supybot.i18n import PluginInternationalization, internationalizeDocstring
 _ = PluginInternationalization('Lart')
 
 class Lart(plugins.ChannelIdDatabasePlugin):
+    """Provides an implementation of the Luser Attitude Readjustment Tool
+    for users."""
     _meRe = re.compile(r'\bme\b', re.I)
     _myRe = re.compile(r'\bmy\b', re.I)
     def _replaceFirstPerson(self, s, nick):
@@ -56,7 +58,7 @@ class Lart(plugins.ChannelIdDatabasePlugin):
         only necessary if the message isn't sent in the channel itself.
         """
         if ' for ' in text:
-            (target, reason) = map(str.strip, text.split(' for ', 1))
+            (target, reason) = list(map(str.strip, text.split(' for ', 1)))
         else:
             (target, reason) = (text, '')
         if id is not None:

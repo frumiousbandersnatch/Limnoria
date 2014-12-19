@@ -34,7 +34,7 @@ _ = PluginInternationalization('Anonymous')
 
 def configure(advanced):
     # This will be called by supybot to configure this module.  advanced is
-    # a bool that specifies whether the user identified himself as an advanced
+    # a bool that specifies whether the user identified themself as an advanced
     # user or not.  You should effect your configuration by manipulating the
     # registry as appropriate.
     from supybot.questions import expect, anything, something, yn
@@ -56,10 +56,9 @@ conf.registerChannelValue(conf.supybot.plugins.Anonymous, 'requireCapability',
     registry.String('', _("""Determines what capability (if any) the bot should
     require people trying to use this plugin to have.""")))
 conf.registerGlobalValue(conf.supybot.plugins.Anonymous, 'allowPrivateTarget',
-    registry.Boolean(False, _("""Determines whether the bot will require 
-    targets of the "say" command to be public (i.e., channels).  If this is
-    True, the bot will allow people to use the "say" command to send private
-    messages to other users.""")))
+    registry.Boolean(False, _("""Determines whether the bot will allow the
+    "tell" command to be used. If true, the bot will allow the "tell"
+    command to send private messages to other users.""")))
 
 
 # vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:

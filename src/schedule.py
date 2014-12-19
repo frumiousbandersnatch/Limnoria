@@ -39,9 +39,7 @@ import heapq
 import functools
 from threading import Lock
 
-import supybot.log as log
-import supybot.world as world
-import supybot.drivers as drivers
+from . import drivers, log, world
 
 class mytuple(tuple):
     def __cmp__(self, other):
@@ -72,8 +70,8 @@ class Schedule(drivers.IrcDriver):
             self.events.clear()
             self.schedule[:] = []
         # We don't reset the counter here because if someone has held an id of
-        # one of the nuked events, we don't want him/her removing new events with
-        # his/her old id.
+        # one of the nuked events, we don't want them removing new events with
+        # their old id.
 
     def name(self):
         return 'Schedule'
@@ -138,11 +136,10 @@ class Schedule(drivers.IrcDriver):
         while self.schedule and self.schedule[0][0] < time.time():
             with self.lock:
                 (t, name, args, kwargs) = heapq.heappop(self.schedule)
-                f = self.events[name]
-            del self.events[name]
+                f = self.events.pop(name)
             try:
                 f(*args, **kwargs)
-            except Exception, e:
+            except Exception as e:
                 log.exception('Uncaught exception in scheduled function:')
 
 

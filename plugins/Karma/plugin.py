@@ -29,6 +29,7 @@
 ###
 
 import os
+import sys
 import csv
 
 import supybot.conf as conf
@@ -58,11 +59,13 @@ class SqliteKarmaDB(object):
             return self.dbs[filename]
         if os.path.exists(filename):
             db = sqlite3.connect(filename, check_same_thread=False)
-            db.text_factory = str
+            if sys.version_info[0] < 3:
+                db.text_factory = str
             self.dbs[filename] = db
             return db
         db = sqlite3.connect(filename, check_same_thread=False)
-        db.text_factory = str
+        if sys.version_info[0] < 3:
+            db.text_factory = str
         self.dbs[filename] = db
         cursor = db.cursor()
         cursor.execute("""CREATE TABLE karma (
@@ -88,12 +91,12 @@ class SqliteKarmaDB(object):
         if len(results) == 0:
             return None
         else:
-            return map(int, results[0])
+            return list(map(int, results[0]))
 
     def gets(self, channel, things):
         db = self._getDb(channel)
         cursor = db.cursor()
-        normalizedThings = dict(zip(map(lambda s: s.lower(), things), things))
+        normalizedThings = dict(list(zip([s.lower() for s in things], things)))
         criteria = ' OR '.join(['normalized=?'] * len(normalizedThings))
         sql = """SELECT name, added-subtracted FROM karma
                  WHERE %s ORDER BY added-subtracted DESC""" % criteria
@@ -167,7 +170,7 @@ class SqliteKarmaDB(object):
         elif kind == 'active':
             orderby = 'added+subtracted'
         else:
-            raise ValueError, 'invalid kind'
+            raise ValueError('invalid kind')
         sql = """SELECT name, %s FROM karma ORDER BY %s DESC LIMIT %s""" % \
               (orderby, orderby, limit)
         db = self._getDb(channel)
@@ -175,12 +178,15 @@ class SqliteKarmaDB(object):
         cursor.execute(sql)
         return [(name, int(i)) for (name, i) in cursor.fetchall()]
 
-    def clear(self, channel, name):
+    def clear(self, channel, name=None):
         db = self._getDb(channel)
         cursor = db.cursor()
-        normalized = name.lower()
-        cursor.execute("""UPDATE karma SET subtracted=0, added=0
-                          WHERE normalized=?""", (normalized,))
+        if name:
+            normalized = name.lower()
+            cursor.execute("""DELETE FROM karma
+                              WHERE normalized=?""", (normalized,))
+        else:
+            cursor.execute("""DELETE FROM karma""")
         db.commit()
 
     def dump(self, channel, filename):
@@ -213,6 +219,7 @@ KarmaDB = plugins.DB('Karma',
                      {'sqlite3': SqliteKarmaDB})
 
 class Karma(callbacks.Plugin):
+    """Provides a simple tracker for setting Karma (thing++, thing--)."""
     callBefore = ('Factoids', 'MoobotFactoids', 'Infobot')
     def __init__(self, irc):
         self.__parent = super(Karma, self)
@@ -236,34 +243,35 @@ class Karma(callbacks.Plugin):
         else:
             irc.noReply()
 
-    def _doKarma(self, irc, channel, thing):
-        assert thing[-2:] in ('++', '--')
-        if thing.endswith('++'):
-            thing = thing[:-2]
-            if ircutils.strEqual(thing, irc.msg.nick) and \
-               not self.registryValue('allowSelfRating', channel):
-                irc.error(_('You\'re not allowed to adjust your own karma.'))
-            elif thing:
-                self.db.increment(channel, self._normalizeThing(thing))
-                karma = self.db.get(channel, self._normalizeThing(thing))
-                self._respond(irc, channel, thing, karma[0]-karma[1])
-        else:
-            thing = thing[:-2]
-            if ircutils.strEqual(thing, irc.msg.nick) and \
-               not self.registryValue('allowSelfRating', channel):
-                irc.error(_('You\'re not allowed to adjust your own karma.'))
-            elif thing:
-                self.db.decrement(channel, self._normalizeThing(thing))
-                karma = self.db.get(channel, self._normalizeThing(thing))
-                self._respond(irc, channel, thing, karma[0]-karma[1])
+    def _doKarma(self, irc, msg, channel, thing):
+        inc = self.registryValue('incrementChars', channel)
+        dec = self.registryValue('decrementChars', channel)
+        if thing.endswith(tuple(inc + dec)):
+            for s in inc:
+                if thing.endswith(s):
+                    thing = thing[:-len(s)]
+                    if ircutils.strEqual(thing, msg.nick) and \
+                        not self.registryValue('allowSelfRating', channel):
+                        irc.error(_('You\'re not allowed to adjust your own karma.'))
+                        return
+                    self.db.increment(channel, self._normalizeThing(thing))
+                    karma = self.db.get(channel, self._normalizeThing(thing))
+            for s in dec:
+                if thing.endswith(s):
+                    thing = thing[:-len(s)]
+                    if ircutils.strEqual(thing, msg.nick) and \
+                        not self.registryValue('allowSelfRating', channel):
+                        irc.error(_('You\'re not allowed to adjust your own karma.'))
+                        return
+                    self.db.decrement(channel, self._normalizeThing(thing))
+                    karma = self.db.get(channel, self._normalizeThing(thing))
+            self._respond(irc, channel, thing, karma[0]-karma[1])
 
     def invalidCommand(self, irc, msg, tokens):
         channel = msg.args[0]
-        if not irc.isChannel(channel) or not tokens:
-            return
-        if tokens[-1][-2:] in ('++', '--'):
+        if irc.isChannel(channel) and tokens:
             thing = ' '.join(tokens)
-            self._doKarma(irc, channel, thing)
+            self._doKarma(irc, msg, channel, thing)
 
     def doPrivmsg(self, irc, msg):
         # We don't handle this if we've been addressed because invalidCommand
@@ -276,8 +284,7 @@ class Karma(callbacks.Plugin):
                self.registryValue('allowUnaddressedKarma', channel):
                 irc = callbacks.SimpleProxy(irc, msg)
                 thing = msg.args[1].rstrip()
-                if thing[-2:] in ('++', '--'):
-                    self._doKarma(irc, channel, thing)
+                self._doKarma(irc, msg, channel, thing)
 
     @internationalizeDocstring
     def karma(self, irc, msg, args, channel, things):
@@ -362,13 +369,14 @@ class Karma(callbacks.Plugin):
 
     @internationalizeDocstring
     def clear(self, irc, msg, args, channel, name):
-        """[<channel>] <name>
+        """[<channel>] [<name>]
 
-        Resets the karma of <name> to 0.
+        Resets the karma of <name> to 0. If <name> is not given, resets
+        everything.
         """
-        self.db.clear(channel, name)
+        self.db.clear(channel, name or None)
         irc.replySuccess()
-    clear = wrap(clear, [('checkChannelCapability', 'op'), 'text'])
+    clear = wrap(clear, [('checkChannelCapability', 'op'), optional('text')])
 
     @internationalizeDocstring
     def dump(self, irc, msg, args, channel, filename):

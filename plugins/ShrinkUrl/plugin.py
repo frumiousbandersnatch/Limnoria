@@ -29,6 +29,7 @@
 ###
 
 import re
+import sys
 import time
 import json
 import urllib
@@ -86,6 +87,8 @@ def retry(f):
     return newf
 
 class ShrinkUrl(callbacks.PluginRegexp):
+    """This plugin features commands to shorten URLs through different services,
+    like tinyurl."""
     regexps = ['shrinkSnarfer']
     def __init__(self, irc):
         self.__parent = super(ShrinkUrl, self)
@@ -98,7 +101,7 @@ class ShrinkUrl(callbacks.PluginRegexp):
     def callCommand(self, command, irc, msg, *args, **kwargs):
         try:
             self.__parent.callCommand(command, irc, msg, *args, **kwargs)
-        except utils.web.Error, e:
+        except utils.web.Error as e:
             irc.error(str(e))
 
     def _outFilterThread(self, irc, msg):
@@ -182,7 +185,7 @@ class ShrinkUrl(callbacks.PluginRegexp):
                 self.db.set('ln', url, text)
                 return text
             else:
-                raise ShrinkError, text
+                raise ShrinkError(text)
 
     @internationalizeDocstring
     def ln(self, irc, msg, args, url):
@@ -195,7 +198,7 @@ class ShrinkUrl(callbacks.PluginRegexp):
             m = irc.reply(lnurl)
             if m is not None:
                 m.tag('shrunken')
-        except ShrinkError, e:
+        except ShrinkError as e:
             irc.error(str(e))
     ln = thread(wrap(ln, ['url']))
 
@@ -207,7 +210,7 @@ class ShrinkUrl(callbacks.PluginRegexp):
             text = utils.web.getUrl('http://tinyurl.com/api-create.php?url=' + url)
             text = text.decode()
             if text.startswith('Error'):
-                raise ShrinkError, text[5:]
+                raise ShrinkError(text[5:])
             self.db.set('tiny', url, text)
             return text
 
@@ -222,7 +225,7 @@ class ShrinkUrl(callbacks.PluginRegexp):
             m = irc.reply(tinyurl)
             if m is not None:
                 m.tag('shrunken')
-        except ShrinkError, e:
+        except ShrinkError as e:
             irc.errorPossibleBug(str(e))
     tiny = thread(wrap(tiny, ['url']))
 
@@ -236,7 +239,7 @@ class ShrinkUrl(callbacks.PluginRegexp):
             data = utils.web.urlencode({'long_url': url})
             text = utils.web.getUrl(self._xrlApi, data=data).decode()
             if text.startswith('ERROR:'):
-                raise ShrinkError, text[6:]
+                raise ShrinkError(text[6:])
             self.db.set('xrl', quotedurl, text)
             return text
 
@@ -251,7 +254,7 @@ class ShrinkUrl(callbacks.PluginRegexp):
             m = irc.reply(xrlurl)
             if m is not None:
                 m.tag('shrunken')
-        except ShrinkError, e:
+        except ShrinkError as e:
             irc.error(str(e))
     xrl = thread(wrap(xrl, ['url']))
 
@@ -261,15 +264,18 @@ class ShrinkUrl(callbacks.PluginRegexp):
         try:
             return self.db.get('goo', url)
         except KeyError:
-            text = utils.web.getUrl(self._gooApi,
-                    headers={'content-type':'application/json'},
-                    data=json.dumps({'longUrl': url}).encode())
-            googl = json.loads(text.decode())['id']
-            if len(googl) > 0 :
+            headers = utils.web.defaultHeaders.copy()
+            headers['content-type'] = 'application/json'
+            data = json.dumps({'longUrl': url})
+            text = utils.web.getUrl(self._gooApi, data=data, headers=headers)
+            if sys.version_info[0] >= 3 and isinstance(text, bytes):
+                text = text.decode()
+            googl = json.loads(text)['id']
+            if googl:
                 self.db.set('goo', url, googl)
                 return googl
             else:
-                raise ShrinkError, text
+                raise ShrinkError(text)
 
     def goo(self, irc, msg, args, url):
         """<url>
@@ -281,7 +287,7 @@ class ShrinkUrl(callbacks.PluginRegexp):
             m = irc.reply(goourl)
             if m is not None:
                 m.tag('shrunken')
-        except ShrinkError, e:
+        except ShrinkError as e:
             irc.error(str(e))
     goo = thread(wrap(goo, ['url']))
 
@@ -295,11 +301,11 @@ class ShrinkUrl(callbacks.PluginRegexp):
             parameters = utils.web.urlencode({'longurl': url})
             response = utils.web.getUrl(self._ur1Api, data=parameters)
             ur1ca = self._ur1Regexp.search(response.decode()).group('url')
-            if len(ur1ca) > 0 :
+            if ur1ca:
                 self.db.set('ur1', url, ur1ca)
                 return ur1ca
             else:
-                raise ShrinkError, text
+                raise ShrinkError(response)
 
     def ur1(self, irc, msg, args, url):
         """<url>
@@ -311,7 +317,7 @@ class ShrinkUrl(callbacks.PluginRegexp):
             m = irc.reply(ur1url)
             if m is not None:
                 m.tag('shrunken')
-        except ShrinkError, e:
+        except ShrinkError as e:
             irc.error(str(e))
     ur1 = thread(wrap(ur1, ['url']))
 
@@ -323,7 +329,7 @@ class ShrinkUrl(callbacks.PluginRegexp):
         except KeyError:
             text = utils.web.getUrl(self._x0Api % url).decode()
             if text.startswith('ERROR:'):
-                raise ShrinkError, text[6:]
+                raise ShrinkError(text[6:])
             self.db.set('x0', url, text)
             return text
 
@@ -338,7 +344,7 @@ class ShrinkUrl(callbacks.PluginRegexp):
             m = irc.reply(x0url)
             if m is not None:
                 m.tag('shrunken')
-        except ShrinkError, e:
+        except ShrinkError as e:
             irc.error(str(e))
     x0 = thread(wrap(x0, ['url']))
 
@@ -365,7 +371,7 @@ class ShrinkUrl(callbacks.PluginRegexp):
             m = irc.reply(expandurl)
             if m is not None:
                 m.tag('shrunken')
-        except ShrinkError, e:
+        except ShrinkError as e:
             irc.error(str(e))
     expand = thread(wrap(expand, ['url']))
 
